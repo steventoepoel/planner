@@ -6,7 +6,7 @@
 <title>Toepoel's</title>
 
 <!-- ✅ Versie -->
-<meta name="app-version" content="1.00">
+<meta name="app-version" content="1.01">
 
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#275D63">
@@ -37,23 +37,26 @@
   --warnText:#1a1a1a;
 }
 
-html[data-theme="dark"]{
-  --bg:#0f1415;
-  --card:#151c1d;
-  --text:#e6f0f1;
-  --muted:#9db0b3;
-  --border:#2a3537;
+/* ✅ Volgt device theme automatisch */
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0f1415;
+    --card:#151c1d;
+    --text:#e6f0f1;
+    --muted:#9db0b3;
+    --border:#2a3537;
 
-  --good:#39c26d;
-  --ok:#ffb347;
-  --bad:#ff6b6b;
+    --good:#39c26d;
+    --ok:#ffb347;
+    --bad:#ff6b6b;
 
-  --chip:#223033;
-  --fav:#f0c800;
-  --favText:#111;
+    --chip:#223033;
+    --fav:#f0c800;
+    --favText:#111;
 
-  --warnBg:#7a5200;
-  --warnText:#ffe7b0;
+    --warnBg:#7a5200;
+    --warnText:#ffe7b0;
+  }
 }
 
 *{ box-sizing:border-box; }
@@ -110,24 +113,9 @@ header{
   display:flex;
   gap:14px;
   align-items:center;
-}
-.headerControls select{
-  padding:10px 14px;
-  border-radius:12px;
-  border:1px solid rgba(255,255,255,0.3);
-  background:rgba(255,255,255,0.15);
-  color:var(--brandText);
-  font-weight:800;
-  min-width:260px;
-}
-.headerControls option{ color:#111; }
-.toggle{
-  display:flex;
-  align-items:center;
-  gap:8px;
   font-weight:900;
+  opacity:0.95;
 }
-.toggle input{ width:20px; height:20px; }
 
 /* Content */
 .container{
@@ -186,7 +174,6 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   .brandBlock img{ width:78px; height:78px; }
   .tagline{ font-size:18px; }
   .headerControls{ width:100%; justify-content:center; }
-  .headerControls select{ min-width:0; width:100%; }
   .row{ flex-direction:column; gap:10px; }
   .datetimeRow{ flex-direction:column; }
   .datetimeRow .timeCols{ width:100%; }
@@ -292,7 +279,9 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   border:1px solid var(--border);
   background:rgba(0,0,0,0.02);
 }
-html[data-theme="dark"] .transferItem{ background:rgba(255,255,255,0.04); }
+@media (prefers-color-scheme: dark){
+  .transferItem{ background:rgba(255,255,255,0.04); }
+}
 .transferLeft{ font-weight:800; }
 .transferRight{ font-weight:900; }
 .transferRight.good{ color:var(--good); }
@@ -343,16 +332,9 @@ html[data-theme="dark"] .transferItem{ background:rgba(255,255,255,0.04); }
         <div class="tagline">Dé reisplanner met <u>alle</u> overstappen!</div>
       </div>
 
-      <div class="headerControls">
-        <select id="modus" title="Modus">
-          <option value="normaal">Normaal</option>
-          <option value="extremeb">Extreem korte overstap</option>
-        </select>
-
-        <label class="toggle" title="Donkere modus">
-          <input id="darkToggle" type="checkbox" aria-label="Donkere modus">
-          🌙
-        </label>
+      <!-- ✅ Modus + theme toggles weg. Altijd Extreem-B + volgt device theme -->
+      <div class="headerControls" title="Altijd Extreem-B ingeschakeld">
+        ⚡ Altijd Extreem
       </div>
     </div>
   </div>
@@ -436,8 +418,8 @@ function humanizeError(err){
   if (!navigator.onLine) return "Je bent offline. Probeer later opnieuw.";
   if (msg.includes("HTTP 401") || msg.includes("HTTP 403")) return "NS API key werkt niet (toegang geweigerd).";
   if (msg.includes("HTTP 500") || msg.includes("HTTP 502") || msg.includes("HTTP 503")) return "NS API is tijdelijk niet bereikbaar.";
-  if (msg.includes("AbortError")) return ""; // autocomplete/search cancel
-  return "Er ging iets mis. Probeer opnieuw.";
+  if (msg.includes("AbortError")) return "";
+  return msg || "Er ging iets mis. Probeer opnieuw.";
 }
 async function fetchJson(url, options){
   const r = await fetch(url, options);
@@ -455,7 +437,7 @@ async function fetchJson(url, options){
   if (!data) throw new Error("Server gaf geen JSON terug");
   return data;
 }
-function debounce(fn, ms=250){
+function debounce(fn, ms=200){
   let t=null;
   return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); };
 }
@@ -493,9 +475,7 @@ function computeTransfersFromLegs(legs){
   const transfers = [];
   let minTransferMin = null;
 
-  if (!Array.isArray(legs) || legs.length < 2) {
-    return { transfers, minTransferMin };
-  }
+  if (!Array.isArray(legs) || legs.length < 2) return { transfers, minTransferMin };
 
   const nlegs = legs.map(normLeg);
   for (let i=0; i<nlegs.length-1; i++){
@@ -513,29 +493,20 @@ function computeTransfersFromLegs(legs){
     transfers.push({ station, minutes: m });
     if (minTransferMin === null || m < minTransferMin) minTransferMin = m;
   }
-
   return { transfers, minTransferMin };
 }
 
-/* Sort by start time */
 function sortByStartTime(arr){
   return arr.sort((a,b)=> (+new Date(a.depart)) - (+new Date(b.depart)));
 }
 
 /* ------------ state keys ------------ */
 const LS = {
-  theme:"theme",
-  modus:"modus",
   van:"last_van",
-  naar:"last_naar",
-  date:"last_date",
-  hour:"last_hour",
-  minute:"last_minute"
+  naar:"last_naar"
 };
 
 /* ------------ elements ------------ */
-const modusSel = document.getElementById("modus");
-const darkToggle = document.getElementById("darkToggle");
 const vanInput = document.getElementById("van");
 const naarInput = document.getElementById("naar");
 const stationsVan = document.getElementById("stationsVan");
@@ -549,21 +520,6 @@ const favBtn = document.getElementById("favBtn");
 const favDiv = document.getElementById("favorieten");
 const resultaat = document.getElementById("resultaat");
 const humanErrorEl = document.getElementById("humanError");
-
-/* ------------ theme + mode remember ------------ */
-if (localStorage.getItem(LS.theme) === "dark"){
-  document.documentElement.setAttribute("data-theme","dark");
-  darkToggle.checked = true;
-}
-darkToggle.addEventListener("change", ()=>{
-  const d = darkToggle.checked;
-  document.documentElement.setAttribute("data-theme", d ? "dark" : "light");
-  localStorage.setItem(LS.theme, d ? "dark" : "light");
-});
-
-const savedMode = localStorage.getItem(LS.modus);
-if (savedMode) modusSel.value = savedMode;
-modusSel.addEventListener("change", ()=>localStorage.setItem(LS.modus, modusSel.value));
 
 /* date fully clickable */
 dateInput.addEventListener("click", ()=>{
@@ -583,34 +539,26 @@ for(let m=0; m<60; m+=5){
   minuteSelect.appendChild(o);
 }
 
-/* load saved inputs */
+/* load saved inputs (alleen van/naar) */
 vanInput.value = localStorage.getItem(LS.van) || "";
 naarInput.value = localStorage.getItem(LS.naar) || "";
-dateInput.value = localStorage.getItem(LS.date) || "";
-hourSelect.value = localStorage.getItem(LS.hour) || "";
-minuteSelect.value = localStorage.getItem(LS.minute) || "";
 
+/* ✅ Datum/tijd bij start altijd NU */
 const now = roundTo5Min(new Date());
-if (!dateInput.value) dateInput.value = localISODate(now);
-if (!hourSelect.value) hourSelect.value = pad2(now.getHours());
-if (!minuteSelect.value) minuteSelect.value = pad2(now.getMinutes());
+dateInput.value = localISODate(now);
+hourSelect.value = pad2(now.getHours());
+minuteSelect.value = pad2(now.getMinutes());
 
-function persist(){
+function persistStations(){
   localStorage.setItem(LS.van, vanInput.value);
   localStorage.setItem(LS.naar, naarInput.value);
-  localStorage.setItem(LS.date, dateInput.value);
-  localStorage.setItem(LS.hour, hourSelect.value);
-  localStorage.setItem(LS.minute, minuteSelect.value);
 }
 ["input","change"].forEach(evt=>{
-  vanInput.addEventListener(evt, persist);
-  naarInput.addEventListener(evt, persist);
-  dateInput.addEventListener(evt, persist);
-  hourSelect.addEventListener(evt, persist);
-  minuteSelect.addEventListener(evt, persist);
+  vanInput.addEventListener(evt, persistStations);
+  naarInput.addEventListener(evt, persistStations);
 });
 
-/* click-to-clear stations (zelfde als jouw origineel) */
+/* click-to-clear stations */
 function clearOnClick(el, key){
   el.addEventListener("click", ()=>{
     if (el.value.trim()) {
@@ -622,7 +570,7 @@ function clearOnClick(el, key){
 clearOnClick(vanInput, LS.van);
 clearOnClick(naarInput, LS.naar);
 
-/* ------------ autocomplete (sneller: cache + abort) ------------ */
+/* ------------ autocomplete (SNELLER) ------------ */
 let vanList = [];
 let naarList = [];
 
@@ -634,7 +582,7 @@ function normName(x){ return (x||"").trim().toLowerCase(); }
 
 async function loadStations(q, listEl, store, which){
   const query = (q || "").trim();
-  if (query.length < 2) return;
+  if (query.length < 1) return; // ✅ al vanaf 1 teken
 
   const key = query.toLowerCase();
   if (stationCache.has(key)){
@@ -673,24 +621,21 @@ async function loadStations(q, listEl, store, which){
   });
 }
 
-// iets hogere debounce = minder calls
-vanInput.addEventListener("input", debounce(()=>loadStations(vanInput.value, stationsVan, vanList, "van"), 400));
-naarInput.addEventListener("input", debounce(()=>loadStations(naarInput.value, stationsNaar, naarList, "naar"), 400));
+/* ✅ Lagere debounce (sneller) */
+vanInput.addEventListener("input", debounce(()=>loadStations(vanInput.value, stationsVan, vanList, "van"), 200));
+naarInput.addEventListener("input", debounce(()=>loadStations(naarInput.value, stationsNaar, naarList, "naar"), 200));
 
 async function resolveCode(name, store){
   const wanted = normName(name);
 
-  // 1) store
   const hit = store.find(s=> normName(s.namen.lang) === wanted);
   if (hit) return hit.code;
 
-  // 2) cache
   for (const arr of stationCache.values()){
     const ex = (arr||[]).find(s=> normName(s.namen.lang) === wanted);
     if (ex) return ex.code;
   }
 
-  // 3) fallback fetch
   const data = await fetchJson(`/stations?q=${encodeURIComponent(name)}`);
   const exact = (data||[]).find(s=> normName(s.namen.lang) === wanted);
   return exact ? exact.code : null;
@@ -700,7 +645,7 @@ function buildDateTime(){
   return `${dateInput.value}T${hourSelect.value}:${minuteSelect.value}`;
 }
 
-/* Render expandable trip card (lazy build details) */
+/* Render expandable trip card (lazy details) */
 function renderExpandableTrip(opt){
   const card = document.createElement("div");
   card.className = "resultCard";
@@ -767,7 +712,6 @@ function renderExpandableTrip(opt){
 
     legs.forEach((l, idx)=>{
       const x = normLeg(l);
-
       const legEl = document.createElement("div");
       legEl.className = "leg";
       legEl.innerHTML = `
@@ -802,7 +746,7 @@ function renderExpandableTrip(opt){
   return card;
 }
 
-/* Search (sneller: parallel resolve + fragment render + abort previous) */
+/* Search (altijd Extreem-B) */
 let inFlightSearch = null;
 
 async function zoekReis(){
@@ -821,7 +765,6 @@ async function zoekReis(){
     if (!vanName || !naarName) return alert("Vul van en naar in.");
     if (!dt) return alert("Kies datum/tijd.");
 
-    // UI direct
     zoekBtn.disabled = true;
     zoekBtn.textContent = "Zoeken…";
 
@@ -829,60 +772,27 @@ async function zoekReis(){
       resolveCode(vanName, vanList),
       resolveCode(naarName, naarList)
     ]);
+
     if (!vanCode || !naarCode) return alert("Kies stations uit de lijst (klik op een suggestie).");
 
-    if (modusSel.value === "extremeb"){
-      const data = await fetchJson(`/reis-extreme-b?van=${encodeURIComponent(vanCode)}&naar=${encodeURIComponent(naarCode)}&datetime=${encodeURIComponent(dt)}`, { signal });
-      const opts = Array.isArray(data.options) ? data.options : [];
-      if (!opts.length) {
-        resultaat.innerHTML = `<div class="resultCard">Geen opties gevonden.</div>`;
-        return;
-      }
+    const data = await fetchJson(`/reis-extreme-b?van=${encodeURIComponent(vanCode)}&naar=${encodeURIComponent(naarCode)}&datetime=${encodeURIComponent(dt)}`, { signal });
+    const opts = Array.isArray(data.options) ? data.options : [];
 
-      opts.forEach(o=>{
-        o.transfersInfo = o.transfersInfo || computeTransfersFromLegs(o.legs || []);
-      });
-
-      const frag = document.createDocumentFragment();
-      sortByStartTime(opts).forEach(o=>{
-        frag.appendChild(renderExpandableTrip(o));
-      });
-      resultaat.appendChild(frag);
-
-    } else {
-      const data = await fetchJson(`/reis?van=${encodeURIComponent(vanCode)}&naar=${encodeURIComponent(naarCode)}&datetime=${encodeURIComponent(dt)}&extreme=1`, { signal });
-      const trips = Array.isArray(data.trips) ? data.trips : [];
-      if (!trips.length) {
-        resultaat.innerHTML = `<div class="resultCard">Geen opties gevonden.</div>`;
-        return;
-      }
-
-      const opts = trips.map(t=>{
-        const legs = t.legs || [];
-        if (!legs.length) return null;
-
-        const first = normLeg(legs[0]);
-        const last  = normLeg(legs[legs.length-1]);
-        const depart = first.dep;
-        const arrive = last.arr;
-        if (!depart || !arrive) return null;
-
-        const depT = Date.parse(depart);
-        const arrT = Date.parse(arrive);
-        if (!isFinite(depT) || !isFinite(arrT)) return null;
-
-        const durationMin = Math.round((arrT - depT)/60000);
-        const transfersInfo = computeTransfersFromLegs(legs);
-
-        return { depart, arrive, durationMin, legs, transfersInfo };
-      }).filter(Boolean);
-
-      const frag = document.createDocumentFragment();
-      sortByStartTime(opts).slice(0,10).forEach(o=>{
-        frag.appendChild(renderExpandableTrip(o));
-      });
-      resultaat.appendChild(frag);
+    if (!opts.length) {
+      resultaat.innerHTML = `<div class="resultCard">Geen opties gevonden.</div>`;
+      return;
     }
+
+    opts.forEach(o=>{
+      o.transfersInfo = o.transfersInfo || computeTransfersFromLegs(o.legs || []);
+    });
+
+    const frag = document.createDocumentFragment();
+    sortByStartTime(opts).forEach(o=>{
+      frag.appendChild(renderExpandableTrip(o));
+    });
+    resultaat.appendChild(frag);
+
   } catch(e){
     const msg = humanizeError(e);
     if (msg) {
@@ -908,7 +818,7 @@ wisselBtn.addEventListener("click", ()=>{
   const t = vanInput.value;
   vanInput.value = naarInput.value;
   naarInput.value = t;
-  persist();
+  persistStations();
 });
 
 /* Favorieten */
@@ -928,7 +838,7 @@ async function laadFavorieten(){
       row.querySelector("span").onclick = ()=>{
         vanInput.value = f.van;
         naarInput.value = f.naar;
-        persist();
+        persistStations();
       };
       row.querySelector("button").onclick = async ()=>{
         await fetchJson("/favorieten/" + i, {method:"DELETE"});
