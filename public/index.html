@@ -6,7 +6,7 @@
 <title>Toepoel's</title>
 
 <!-- ✅ Versie -->
-<meta name="app-version" content="1.05" />
+<meta name="app-version" content="1.06" />
 
 <link rel="manifest" href="/manifest.json" />
 <meta name="theme-color" content="#275D63" />
@@ -377,7 +377,7 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   </div>
 
   <div class="card favlist">
-    <b>Favorieten (alleen op dit apparaat)</b>
+    <b>Favoriete reizen</b>
     <div id="favorieten"></div>
   </div>
 
@@ -851,9 +851,10 @@ wisselBtn.addEventListener("click", ()=>{
 });
 
 /* =========================
-   FAVORIETEN (LOCALSTORAGE v1.05)
+   FAVORIETE REIZEN (LOCALSTORAGE v1.06)
    ========================= */
-const FAV_KEY = "planner_favorieten_v1";
+const FAV_KEY = "planner_favorieten_v1"; // key blijft gelijk (geen dataverlies)
+const norm = (s) => String(s || "").trim().replace(/\s+/g, " ").toLowerCase();
 
 function getFavs() {
   try {
@@ -874,7 +875,7 @@ function laadFavorieten() {
   favDiv.innerHTML = "";
 
   if (!favs.length) {
-    favDiv.innerHTML = `<div class="small">Nog geen favorieten.</div>`;
+    favDiv.innerHTML = `<div class="small">Nog geen favoriete reizen.</div>`;
     return;
   }
 
@@ -883,12 +884,17 @@ function laadFavorieten() {
   favs.forEach((f, i) => {
     const row = document.createElement("div");
     row.className = "favitem";
-    row.innerHTML = `
-      <span>${f.van} → ${f.naar}</span>
-      <button class="favDel" type="button">✖</button>
-    `;
 
-    row.querySelector("span").onclick = () => {
+    // veilig renderen (geen HTML inject via localStorage)
+    const label = document.createElement("span");
+    label.textContent = `${f.van} → ${f.naar}`;
+
+    const del = document.createElement("button");
+    del.className = "favDel";
+    del.type = "button";
+    del.textContent = "✖";
+
+    label.onclick = () => {
       vanInput.value = f.van;
       naarInput.value = f.naar;
       persistStations();
@@ -896,13 +902,15 @@ function laadFavorieten() {
       window.scrollTo({ top: 0, behavior: "smooth" });
     };
 
-    row.querySelector("button").onclick = () => {
-      const updated = getFavs();
+    del.onclick = () => {
+      const updated = favs.slice(); // gebruik huidige lijst (sneller)
       updated.splice(i, 1);
       saveFavs(updated);
       laadFavorieten();
     };
 
+    row.appendChild(label);
+    row.appendChild(del);
     frag.appendChild(row);
   });
 
@@ -916,19 +924,20 @@ favBtn.addEventListener("click", () => {
 
   const favs = getFavs();
 
-  const exists = favs.some(f =>
-    f.van.toLowerCase() === van.toLowerCase() &&
-    f.naar.toLowerCase() === naar.toLowerCase()
-  );
-
+  const exists = favs.some((f) => norm(f.van) === norm(van) && norm(f.naar) === norm(naar));
   if (exists) {
-    alert("Deze favoriet bestaat al.");
+    alert("Deze favoriete reis bestaat al.");
     return;
   }
 
   favs.push({ van, naar });
   saveFavs(favs);
   laadFavorieten();
+
+  // kleine UX feedback zonder extra UI
+  const old = favBtn.textContent;
+  favBtn.textContent = "✅ Opgeslagen";
+  setTimeout(() => (favBtn.textContent = old), 900);
 });
 
 laadFavorieten();

@@ -6,7 +6,7 @@
 // - Oude caches opruimen bij activate
 // - skipWaiting + clientsClaim zodat updates sneller “pakken”
 
-const VERSION = "1.05"; // <-- verhoog dit bij elke release
+const VERSION = "1.06"; // <-- verhoog dit bij elke release
 const CACHE_STATIC = `toepoel-static-${VERSION}`;
 const CACHE_RUNTIME = `toepoel-runtime-${VERSION}`;
 

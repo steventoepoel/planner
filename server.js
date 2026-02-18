@@ -1,4 +1,4 @@
-// server.js (Render production)
+// server.js (Render production) — light stability optimizations
 // p-limit + rate limiting + caching + prefix fallback + slimme Extreme-B
 
 import express from "express";
@@ -15,7 +15,11 @@ const app = express();
 /** ✅ Render / proxies: MOET vóór rate-limit */
 app.set("trust proxy", 1);
 
+// kleine hardening / netheid
+app.disable("x-powered-by");
+
 const PORT = process.env.PORT || 3000;
+const HOST = "0.0.0.0"; // ✅ belangrijk op Render
 
 app.use(express.json());
 
@@ -48,6 +52,7 @@ app.use(
     max: 180, // algemeen
     standardHeaders: true,
     legacyHeaders: false,
+    // trust proxy staat aan, dus req.ip is OK
   })
 );
 
@@ -89,10 +94,19 @@ function requireApiKey(res) {
 }
 
 /* =========================
-   Health (handig voor debug)
+   Health (handig voor Render checks)
    ========================= */
+app.get("/healthz", (req, res) => {
+  res.status(200).json({
+    ok: true,
+    hasApiKey: Boolean(API_KEY),
+    node: process.version,
+  });
+});
+
+// backwards compat met je oude endpoint
 app.get("/health", (req, res) => {
-  res.json({
+  res.status(200).json({
     ok: true,
     hasApiKey: Boolean(API_KEY),
     node: process.version,
@@ -111,8 +125,13 @@ const limitStations = pLimit(4);
 async function fetchWithTimeout(url, options = {}, ms = 10000) {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), ms);
+
   try {
     return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    // AbortError is "normaal" bij timeouts — geef nettere error
+    if (err?.name === "AbortError") throw new Error("Timeout bij upstream request");
+    throw err;
   } finally {
     clearTimeout(t);
   }
@@ -584,8 +603,53 @@ app.get("/reis-extreme-b", async (req, res) => {
 });
 
 /* =========================
-   Start
+   Global error safety nets (stability)
    ========================= */
-app.listen(PORT, () => {
-  console.log(`✅ Server draait op http://localhost:${PORT} (PORT=${PORT})`);
+process.on("unhandledRejection", (reason) => {
+  console.error("❌ unhandledRejection:", reason);
 });
+
+process.on("uncaughtException", (err) => {
+  console.error("❌ uncaughtException:", err);
+  // hard crash is soms beter, maar op Render wil je meestal wél netjes stoppen:
+  // geef even tijd om logs te flushen en stop dan.
+  setTimeout(() => process.exit(1), 250).unref();
+});
+
+/* =========================
+   Start + timeouts + graceful shutdown
+   ========================= */
+const server = app.listen(PORT, HOST, () => {
+  console.log(`✅ Server draait op http://${HOST}:${PORT} (PORT=${PORT})`);
+});
+
+// Timeouts: goede defaults achter proxies / load balancers
+// (waarden zijn bewust “mild”: geen agressieve timeouts)
+server.keepAliveTimeout = 70_000; // > typical proxy idle (bijv 60s)
+server.headersTimeout = 75_000;   // moet > keepAliveTimeout
+// Node 18+ heeft ook requestTimeout; zet 'm mild zodat hanging requests niet eeuwig blijven
+server.requestTimeout = 120_000;
+
+// Graceful shutdown: Render stuurt SIGTERM bij deploy/scale-down
+let shuttingDown = false;
+
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  console.log(`🧯 ${signal} ontvangen: graceful shutdown...`);
+
+  // stop met nieuwe verbindingen accepteren
+  server.close((err) => {
+    if (err) console.error("Server close error:", err);
+  });
+
+  // force-exit na een redelijke tijd (voorkomt “hang” bij stuck connections)
+  setTimeout(() => {
+    console.log("🧯 Force exit na timeout.");
+    process.exit(0);
+  }, 12_000).unref();
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
