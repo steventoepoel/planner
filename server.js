@@ -1,9 +1,10 @@
-// server.js
+// server.js (Render-ready, p-limit + rate limiting + caching + slimme Extreme-B)
 import express from "express";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
 import { promises as fsp } from "fs";
 import pLimit from "p-limit";
+import rateLimit from "express-rate-limit";
 
 dotenv.config();
 
@@ -14,17 +15,53 @@ app.use(express.json());
 app.use(express.static("public"));
 
 /* =========================
-   NS API setup
+   Rate limiting (beveiliging)
    ========================= */
+
+// algemeen (sitebreed)
+app.use(
+  rateLimit({
+    windowMs: 60 * 1000, // 1 min
+    max: 180, // 180 req/min per IP
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+);
+
+// "dure" endpoints (NS trips)
+const heavyLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use("/reis", heavyLimiter);
+app.use("/reis-extreme-b", heavyLimiter);
+
+// autocomplete (stations)
+const stationLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use("/stations", stationLimiter);
+
+/* =========================
+   NS API
+   ========================= */
+
 const API_KEY = process.env.NS_API_KEY;
-if (!API_KEY) console.error("❌ NS_API_KEY ontbreekt in .env");
+if (!API_KEY) console.error("❌ NS_API_KEY ontbreekt in environment variables");
 
 const headers = { "Ocp-Apim-Subscription-Key": API_KEY };
-const EXTREME = { minTransferTime: 0, additionalTransferTime: 0, searchForAccessibleTrip: false };
 
-// Concurrency limiters (tunen naar wens)
-const limitTrips = pLimit(6);     // trips calls
-const limitStations = pLimit(4);  // station lookup calls
+// Extreme parameters (zoals je al gebruikte)
+const EXTREME = {
+  minTransferTime: 0,
+  additionalTransferTime: 0,
+  searchForAccessibleTrip: false,
+};
 
 function requireApiKey(res) {
   if (!API_KEY) {
@@ -35,8 +72,49 @@ function requireApiKey(res) {
 }
 
 /* =========================
-   Favorieten (async fs)
+   Concurrency limits (p-limit)
    ========================= */
+
+const limitTrips = pLimit(6);
+const limitStations = pLimit(4);
+
+/* =========================
+   Fetch helpers (timeout + status)
+   ========================= */
+
+async function fetchWithTimeout(url, options = {}, ms = 10000) {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function fetchJsonStrict(url, options = {}, ms = 10000) {
+  const r = await fetchWithTimeout(url, options, ms);
+  const text = await r.text();
+
+  let data = null;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    // ignore
+  }
+
+  if (!r.ok) {
+    const msg = data?.error || data?.message || `HTTP ${r.status}`;
+    throw new Error(msg);
+  }
+  if (!data) throw new Error("Server gaf geen JSON terug");
+  return data;
+}
+
+/* =========================
+   FAVORIETEN (async fs)
+   ========================= */
+
 const FAVORIET_FILE = "./favorieten.json";
 
 async function ensureFavFile() {
@@ -46,6 +124,7 @@ async function ensureFavFile() {
     await fsp.writeFile(FAVORIET_FILE, JSON.stringify([], null, 2));
   }
 }
+
 async function readFavs() {
   try {
     const txt = await fsp.readFile(FAVORIET_FILE, "utf-8");
@@ -55,6 +134,7 @@ async function readFavs() {
     return [];
   }
 }
+
 async function writeFavs(favs) {
   await fsp.writeFile(FAVORIET_FILE, JSON.stringify(favs, null, 2));
 }
@@ -62,8 +142,7 @@ async function writeFavs(favs) {
 await ensureFavFile();
 
 app.get("/favorieten", async (req, res) => {
-  const favs = await readFavs();
-  res.json(favs);
+  res.json(await readFavs());
 });
 
 app.post("/favorieten", async (req, res) => {
@@ -73,7 +152,6 @@ app.post("/favorieten", async (req, res) => {
   const favs = await readFavs();
   favs.push({ van, naar });
   await writeFavs(favs);
-
   res.json({ ok: true });
 });
 
@@ -87,53 +165,32 @@ app.delete("/favorieten/:index", async (req, res) => {
 
   favs.splice(idx, 1);
   await writeFavs(favs);
-
   res.json({ ok: true });
 });
 
 /* =========================
-   Fetch helpers (timeout + status check)
+   STATIONS (autocomplete) + cache TTL
    ========================= */
-async function fetchWithTimeout(url, options = {}, ms = 8000) {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), ms);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(t);
-  }
-}
 
-async function fetchJsonStrict(url, options = {}, ms = 8000) {
-  const r = await fetchWithTimeout(url, options, ms);
-  const text = await r.text();
-
-  let data = null;
-  try { data = JSON.parse(text); } catch {}
-
-  if (!r.ok) {
-    const msg = data?.message || data?.error || `HTTP ${r.status}`;
-    throw new Error(msg);
-  }
-  if (!data) throw new Error("Server gaf geen JSON terug");
-  return data;
-}
-
-/* =========================
-   Stations (server-cache)
-   ========================= */
-const stationSearchCache = new Map(); // key -> payload array
+const stationSearchCache = new Map(); // key -> {t,payload}
+const STATION_TTL_MS = 10 * 60 * 1000; // 10 min
 
 async function fetchStationsCached(q) {
   const key = (q || "").trim().toLowerCase();
   if (!key) return [];
-  if (stationSearchCache.has(key)) return stationSearchCache.get(key);
 
-  const url = `https://gateway.apiportal.ns.nl/reisinformatie-api/api/v2/stations?q=${encodeURIComponent(q)}`;
+  const hit = stationSearchCache.get(key);
+  const now = Date.now();
+  if (hit && now - hit.t < STATION_TTL_MS) return hit.payload;
+
+  const url = `https://gateway.apiportal.ns.nl/reisinformatie-api/api/v2/stations?q=${encodeURIComponent(
+    q
+  )}`;
+
   const data = await limitStations(() => fetchJsonStrict(url, { headers }, 8000));
   const payload = data.payload || [];
 
-  stationSearchCache.set(key, payload);
+  stationSearchCache.set(key, { t: now, payload });
   return payload;
 }
 
@@ -146,14 +203,15 @@ app.get("/stations", async (req, res) => {
     const payload = await fetchStationsCached(q);
     res.json(payload);
   } catch (err) {
-    console.error("Stations fout:", err);
+    console.error("Stations fout:", err.message || err);
     res.status(500).json({ error: "Stations ophalen mislukt" });
   }
 });
 
 /* =========================
-   Trips helpers
+   TRIPS helpers
    ========================= */
+
 async function fetchTrips({ from, to, dateTimeISO, extraParams = {} }) {
   const base = new URL("https://gateway.apiportal.ns.nl/reisinformatie-api/api/v3/trips");
   base.searchParams.set("fromStation", from);
@@ -166,7 +224,6 @@ async function fetchTrips({ from, to, dateTimeISO, extraParams = {} }) {
     }
   }
 
-  // Trips calls onder concurrency limit + timeout + status check
   return await limitTrips(() => fetchJsonStrict(base.toString(), { headers }, 10000));
 }
 
@@ -245,9 +302,8 @@ function combineOptions(optA, optB) {
 }
 
 function optionSignature(o) {
-  // sterkere dedup: route + tijden
   const legsSig = (o.legs || [])
-    .map(l => `${l.originName || ""}>${l.destName || ""}@${l.dep || ""}-${l.arr || ""}`)
+    .map((l) => `${l.originName || ""}>${l.destName || ""}@${l.dep || ""}-${l.arr || ""}`)
     .join("~");
   return `${o.depart}|${o.arrive}|${o.durationMin}|${legsSig}`;
 }
@@ -255,6 +311,7 @@ function optionSignature(o) {
 /* =========================
    /reis (NORMAAL)
    ========================= */
+
 app.get("/reis", async (req, res) => {
   if (!requireApiKey(res)) return;
   const { van, naar, datetime, extreme } = req.query;
@@ -273,17 +330,18 @@ app.get("/reis", async (req, res) => {
 
     res.json(data);
   } catch (err) {
-    console.error("Reis fout:", err);
+    console.error("Reis fout:", err.message || err);
     res.status(500).json({ error: "Reis ophalen mislukt" });
   }
 });
 
 /* =========================
-   /reis-extreme-b (sneller)
-   - parallel requests met p-limit
-   - minder B-calls door top-N optA
-   - station lookups cached
+   /reis-extreme-b (SLIMMER)
+   - kiest beste via’s op basis van frequentie
+   - p-limit parallel
+   - pruned search (TOP_A / TOP_B / MAX_TRANSFER)
    ========================= */
+
 app.get("/reis-extreme-b", async (req, res) => {
   if (!requireApiKey(res)) return;
   const { van, naar, datetime } = req.query;
@@ -292,6 +350,20 @@ app.get("/reis-extreme-b", async (req, res) => {
   const FROM = String(van);
   const TO = String(naar);
   const DT = String(datetime);
+
+  // Tunables (sneller = lager, meer opties = hoger)
+  const MAX_VIA = 8; // maximaal aantal via-stations om te proberen
+  const TOP_A = 5; // top A-opties per via
+  const TOP_B = 8; // top B-opties per A
+  const MAX_TRANSFER = 20; // alleen overstappen 0..20 min
+  const TARGET = 10; // output count
+
+  function scoreOption(o) {
+    // lagere score = beter
+    const minT = o.minTransferMin ?? 999;
+    const penalty = minT > 10 ? (minT - 10) * 2 : 0;
+    return o.durationMin + penalty;
+  }
 
   try {
     // 1) Basis trips (extreme)
@@ -304,21 +376,34 @@ app.get("/reis-extreme-b", async (req, res) => {
 
     const baseTrips = Array.isArray(base.trips) ? base.trips : [];
 
-    // 2) Verzamel via-station namen uit base trips
-    const viaNames = new Set();
+    // 2) Baseline opties (directe trips)
+    const options = baseTrips.map(tripToOption).filter(Boolean);
+
+    // Als we al genoeg hebben: sorteer en return
+    if (options.length >= TARGET) {
+      options.sort((a, b) => scoreOption(a) - scoreOption(b));
+      return res.json({ options: options.slice(0, TARGET) });
+    }
+
+    // 3) Verzamel via-namen + frequentie
+    const viaCount = new Map();
     for (const t of baseTrips) {
       const legs = t.legs || [];
       for (let i = 0; i < legs.length - 1; i++) {
         const nm = legs[i]?.destination?.name;
-        if (nm) viaNames.add(nm);
+        if (!nm) continue;
+        viaCount.set(nm, (viaCount.get(nm) || 0) + 1);
       }
     }
 
-    // 3) Resolve via station codes (parallel + cache)
-    const viaNameList = Array.from(viaNames).slice(0, 10);
+    const viaNames = Array.from(viaCount.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, MAX_VIA)
+      .map(([nm]) => nm);
 
+    // 4) Resolve via codes parallel + cached station search
     const viaCodeResults = await Promise.all(
-      viaNameList.map((nm) =>
+      viaNames.map((nm) =>
         limitStations(async () => {
           const q = nm.slice(0, 12);
           const payload = await fetchStationsCached(q);
@@ -329,29 +414,22 @@ app.get("/reis-extreme-b", async (req, res) => {
         })
       )
     );
-
     const viaCodes = viaCodeResults.filter(Boolean);
 
-    // 4) Opties uit base trips
-    const options = [];
-    for (const t of baseTrips) {
-      const opt = tripToOption(t);
-      if (opt) options.push(opt);
+    // 5) Generate combos
+    const best = [];
+    function pushBest(o) {
+      best.push(o);
+      if (best.length > 60) {
+        best.sort((a, b) => scoreOption(a) - scoreOption(b));
+        best.length = 40;
+      }
     }
-
-    // 5) Combos: voor elke via:
-    //    - fetch A (van -> via)
-    //    - pak top N A-opties
-    //    - fetch B (via -> naar) parallel voor die A-opties
-    const combos = [];
-
-    // tunables
-    const TOP_A = 6;   // minder B-calls
-    const TOP_B = 12;
 
     await Promise.all(
       viaCodes.map((via) =>
         limitTrips(async () => {
+          // A: FROM -> VIA
           const aData = await fetchTrips({
             from: FROM,
             to: via,
@@ -366,8 +444,8 @@ app.get("/reis-extreme-b", async (req, res) => {
             .sort((x, y) => x.durationMin - y.durationMin)
             .slice(0, TOP_A);
 
-          // B-requests parallel (onder limitTrips via fetchTrips)
-          const bAll = await Promise.all(
+          // B calls parallel for each A
+          await Promise.all(
             aOpts.map(async (optA) => {
               const bData = await fetchTrips({
                 from: via,
@@ -379,33 +457,27 @@ app.get("/reis-extreme-b", async (req, res) => {
               const bTrips = Array.isArray(bData.trips) ? bData.trips : [];
               const bOpts = bTrips.map(tripToOption).filter(Boolean).slice(0, TOP_B);
 
-              // combine locally
-              const localCombos = [];
               for (const optB of bOpts) {
                 const transferMin = Math.round(
                   (Date.parse(optB.depart) - Date.parse(optA.arrive)) / 60000
                 );
-                if (transferMin >= 0) {
-                  const c = combineOptions(optA, optB);
-                  if (c) localCombos.push(c);
-                }
+                if (transferMin < 0 || transferMin > MAX_TRANSFER) continue;
+
+                const c = combineOptions(optA, optB);
+                if (c) pushBest(c);
               }
-              return localCombos;
             })
           );
-
-          // flatten
-          for (const arr of bAll) combos.push(...arr);
         })
       )
     );
 
-    options.push(...combos);
-
-    // 6) Dedup + sort
+    // 6) Merge + dedup + sort
+    const all = [...options, ...best].filter(Boolean);
     const seen = new Set();
     const deduped = [];
-    for (const o of options) {
+
+    for (const o of all) {
       const key = optionSignature(o);
       if (!seen.has(key)) {
         seen.add(key);
@@ -413,15 +485,18 @@ app.get("/reis-extreme-b", async (req, res) => {
       }
     }
 
-    deduped.sort((x, y) => x.durationMin - y.durationMin);
-
-    res.json({ options: deduped.slice(0, 10) });
+    deduped.sort((a, b) => scoreOption(a) - scoreOption(b));
+    res.json({ options: deduped.slice(0, TARGET) });
   } catch (err) {
-    console.error("Extreme B fout:", err);
+    console.error("Extreme B fout:", err.message || err);
     res.status(500).json({ error: "Extreme B ophalen mislukt" });
   }
 });
 
+/* =========================
+   Start
+   ========================= */
+
 app.listen(PORT, () => {
-  console.log(`✅ Server draait op http://localhost:${PORT}`);
+  console.log(`✅ Server draait op http://localhost:${PORT} (PORT=${PORT})`);
 });
