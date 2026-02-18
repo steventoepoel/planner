@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Toepoel's</title>
+
+<!-- ✅ Versie -->
+<meta name="app-version" content="1.00">
+
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#275D63">
+<link rel="icon" type="image/png" href="/logo-192.png">
+<link rel="apple-touch-icon" href="/logo-192.png">
+
+<style>
+:root{
+  --brand:#275D63;
+  --brand2:#2f6f76;
+  --brandText:#ffffff;
+
+  --bg:#f4f6f6;
+  --card:#ffffff;
+  --text:#102022;
+  --muted:#4b5a5c;
+  --border:#e3e8e8;
+
+  --good:#1f8f4a;
+  --ok:#c77700;
+  --bad:#c40000;
+
+  --chip:#eef2f2;
+  --fav:#ffd700;
+  --favText:#111;
+
+  --warnBg:#ffb347;
+  --warnText:#1a1a1a;
+}
+
+html[data-theme="dark"]{
+  --bg:#0f1415;
+  --card:#151c1d;
+  --text:#e6f0f1;
+  --muted:#9db0b3;
+  --border:#2a3537;
+
+  --good:#39c26d;
+  --ok:#ffb347;
+  --bad:#ff6b6b;
+
+  --chip:#223033;
+  --fav:#f0c800;
+  --favText:#111;
+
+  --warnBg:#7a5200;
+  --warnText:#ffe7b0;
+}
+
+*{ box-sizing:border-box; }
+body{
+  font-family: Arial, sans-serif;
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
+}
+
+/* Safe area */
+.safe{
+  padding-left: max(14px, env(safe-area-inset-left));
+  padding-right:max(14px, env(safe-area-inset-right));
+}
+
+/* Header */
+header{
+  background:var(--brand);
+  color:var(--brandText);
+  padding-top: max(18px, env(safe-area-inset-top));
+  padding-bottom:18px;
+}
+.headerRow{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  max-width:1000px;
+  margin:auto;
+  flex-wrap:wrap;
+  gap:20px;
+}
+.brandBlock{
+  display:flex;
+  align-items:center;
+  gap:18px;
+}
+.brandBlock img{
+  width:92px;
+  height:92px;
+  border-radius:22px;
+  background:rgba(255,255,255,0.15);
+  padding:10px;
+}
+.tagline{
+  font-weight:900;
+  font-size:26px;
+  line-height:1.15;
+}
+.tagline u{ text-decoration-thickness:3px; text-underline-offset:4px; }
+
+.headerControls{
+  display:flex;
+  gap:14px;
+  align-items:center;
+}
+.headerControls select{
+  padding:10px 14px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,0.3);
+  background:rgba(255,255,255,0.15);
+  color:var(--brandText);
+  font-weight:800;
+  min-width:260px;
+}
+.headerControls option{ color:#111; }
+.toggle{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-weight:900;
+}
+.toggle input{ width:20px; height:20px; }
+
+/* Content */
+.container{
+  max-width:1000px;
+  margin:auto;
+  padding-top:14px;
+}
+
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:16px;
+  margin-top:16px;
+}
+
+label{ font-weight:800; display:block; margin-top:8px; }
+input, select, button{
+  width:100%;
+  padding:12px;
+  margin-top:6px;
+  border-radius:12px;
+  border:1px solid var(--border);
+  font-size:16px;
+  background:var(--card);
+  color:var(--text);
+}
+button{
+  background:var(--brand);
+  color:white;
+  border:none;
+  font-weight:900;
+}
+button:hover{ background:var(--brand2); cursor:pointer; }
+button:disabled{ opacity:0.75; cursor:not-allowed; }
+
+.row{ display:flex; gap:12px; margin-top:10px; }
+.row > *{ flex:1; }
+
+.small{ color:var(--muted); font-size:13px; line-height:1.35; }
+
+/* Datum/tijd layout */
+.datetimeRow{
+  display:flex;
+  gap:12px;
+  margin-top:6px;
+  align-items:flex-start;
+}
+.datetimeRow .col{ flex:1; }
+.datetimeRow .timeCols{ display:flex; gap:10px; }
+.datetimeRow .timeCols select{ flex:1; }
+
+@media (max-width:768px){
+  .headerRow{ flex-direction:column; align-items:center; text-align:center; }
+  .brandBlock{ flex-direction:column; align-items:center; gap:12px; }
+  .brandBlock img{ width:78px; height:78px; }
+  .tagline{ font-size:18px; }
+  .headerControls{ width:100%; justify-content:center; }
+  .headerControls select{ min-width:0; width:100%; }
+  .row{ flex-direction:column; gap:10px; }
+  .datetimeRow{ flex-direction:column; }
+  .datetimeRow .timeCols{ width:100%; }
+}
+
+/* Result cards (clickable + expand) */
+.resultCard{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:12px;
+  margin-top:12px;
+}
+.resultHeader{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:center;
+  cursor:pointer;
+}
+.resultHeaderLeft{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0;
+}
+.tripTitle{ font-weight:900; }
+.timeBig{
+  font-size:20px;
+  font-weight:900;
+}
+.timeBig span{ font-size:22px; font-weight:900; }
+
+.badgeRow{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:6px;
+}
+.badge{
+  display:inline-block;
+  padding:4px 10px;
+  border-radius:999px;
+  background:var(--chip);
+  font-size:12px;
+  font-weight:900;
+  color:var(--muted);
+}
+.badge.good{ color:var(--good); }
+.badge.ok{ color:var(--ok); }
+.badge.bad{ color:var(--bad); }
+
+.chev{
+  font-weight:900;
+  font-size:18px;
+  user-select:none;
+}
+
+.details{
+  display:none;
+  margin-top:10px;
+}
+.details.open{ display:block; }
+
+.warn{
+  background:var(--warnBg);
+  color:var(--warnText);
+  padding:8px 10px;
+  border-radius:12px;
+  margin-top:10px;
+  font-weight:900;
+}
+
+.hr{ height:1px; background:var(--border); margin:10px 0; }
+
+.leg{ padding:8px 0; }
+.legTop{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  font-weight:900;
+}
+.legLine{
+  margin-top:4px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.25;
+}
+.delay{ color:var(--bad); font-weight:900; }
+
+.transferList{
+  margin-top:8px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.transferItem{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  padding:8px 10px;
+  border-radius:12px;
+  border:1px solid var(--border);
+  background:rgba(0,0,0,0.02);
+}
+html[data-theme="dark"] .transferItem{ background:rgba(255,255,255,0.04); }
+.transferLeft{ font-weight:800; }
+.transferRight{ font-weight:900; }
+.transferRight.good{ color:var(--good); }
+.transferRight.ok{ color:var(--ok); }
+.transferRight.bad{ color:var(--bad); }
+
+/* Favorieten */
+.favBtn{ background:var(--fav); color:var(--favText); }
+.favlist .favitem{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  padding:10px;
+  border-radius:12px;
+  border:1px solid var(--border);
+  margin-top:8px;
+}
+.favlist .favitem span{ cursor:pointer; font-weight:900; }
+.favDel{
+  width:auto;
+  padding:8px 12px;
+  border-radius:12px;
+  background:var(--chip);
+  border:1px solid var(--border);
+  color:var(--text);
+  font-weight:900;
+}
+
+/* Footer */
+.footer{
+  max-width:1000px;
+  margin:20px auto;
+  font-size:12px;
+  color:var(--muted);
+  text-align:center;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div class="safe">
+    <div class="headerRow">
+      <div class="brandBlock">
+        <img src="/logo-192.png" alt="Logo">
+        <div class="tagline">Dé reisplanner met <u>alle</u> overstappen!</div>
+      </div>
+
+      <div class="headerControls">
+        <select id="modus" title="Modus">
+          <option value="normaal">Normaal</option>
+          <option value="extremeb">Extreem korte overstap</option>
+        </select>
+
+        <label class="toggle" title="Donkere modus">
+          <input id="darkToggle" type="checkbox" aria-label="Donkere modus">
+          🌙
+        </label>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="container safe">
+
+  <div class="card">
+    <label>Van</label>
+    <input id="van" list="stationsVan" placeholder="Typ station (kies uit lijst)">
+    <datalist id="stationsVan"></datalist>
+
+    <label>Naar</label>
+    <input id="naar" list="stationsNaar" placeholder="Typ station (kies uit lijst)">
+    <datalist id="stationsNaar"></datalist>
+
+    <label>Datum & tijd</label>
+    <div class="datetimeRow">
+      <div class="col">
+        <input type="date" id="dateInput">
+      </div>
+      <div class="col timeCols">
+        <select id="hourSelect" aria-label="Uur"></select>
+        <select id="minuteSelect" aria-label="Minuut"></select>
+      </div>
+    </div>
+
+    <div class="row">
+      <button id="wisselBtn" type="button" style="background:#6b7b7d;">⇄ Wissel</button>
+      <button id="zoekBtn" type="button">Zoek reis</button>
+    </div>
+
+    <div class="row">
+      <button id="favBtn" type="button" class="favBtn">⭐ Bewaar favoriet</button>
+    </div>
+
+    <div class="small" id="humanError" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card favlist">
+    <b>Favorieten</b>
+    <div id="favorieten"></div>
+  </div>
+
+  <div id="resultaat"></div>
+</div>
+
+<div class="footer safe">
+  <div>Aan deze planner kunnen geen rechten aan worden ontleent.</div>
+  <div>Deze planner helpt je alleen om te kijken of je nog sneller kunt reizen.</div>
+  <div>Dit lukt niet altijd. 😉</div>
+  <div>Versie: <span id="appVersion"></span></div>
+</div>
+
+<script>
+/* =========================
+   VERSION
+   ========================= */
+const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content || "onbekend";
+document.getElementById("appVersion").textContent = APP_VERSION;
+
+/* ------------ helpers ------------ */
+function pad2(n){ return String(n).padStart(2,"0"); }
+function roundTo5Min(d){
+  const x = new Date(d);
+  x.setMinutes(Math.floor(x.getMinutes()/5)*5, 0, 0);
+  return x;
+}
+function localISODate(d){
+  const x = new Date(d);
+  return `${x.getFullYear()}-${pad2(x.getMonth()+1)}-${pad2(x.getDate())}`;
+}
+function fmtTime(iso){
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+}
+function humanizeError(err){
+  const msg = String(err || "");
+  if (!navigator.onLine) return "Je bent offline. Probeer later opnieuw.";
+  if (msg.includes("HTTP 401") || msg.includes("HTTP 403")) return "NS API key werkt niet (toegang geweigerd).";
+  if (msg.includes("HTTP 500") || msg.includes("HTTP 502") || msg.includes("HTTP 503")) return "NS API is tijdelijk niet bereikbaar.";
+  if (msg.includes("AbortError")) return ""; // autocomplete/search cancel
+  return "Er ging iets mis. Probeer opnieuw.";
+}
+async function fetchJson(url, options){
+  const r = await fetch(url, options);
+  const ct = (r.headers.get("content-type") || "").toLowerCase();
+  const text = await r.text();
+
+  let data = null;
+  if (ct.includes("application/json")){
+    try { data = JSON.parse(text); } catch {}
+  }
+  if (!r.ok){
+    const errMsg = (data && (data.error || data.message)) ? (data.error || data.message) : `HTTP ${r.status}`;
+    throw new Error(errMsg);
+  }
+  if (!data) throw new Error("Server gaf geen JSON terug");
+  return data;
+}
+function debounce(fn, ms=250){
+  let t=null;
+  return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); };
+}
+function transferClass(min){
+  if (min === null || min === undefined) return "";
+  if (min < 1) return "bad";
+  if (min < 3) return "ok";
+  return "good";
+}
+
+/* Normalize leg: supports both NS trips legs and Extreme-B legs */
+function normLeg(l){
+  const dep = l?.dep || l?.origin?.plannedDateTime || null;
+  const arr = l?.arr || l?.destination?.plannedDateTime || null;
+
+  const originName = l?.originName || l?.origin?.name || null;
+  const destName   = l?.destName   || l?.destination?.name || null;
+
+  const depTrack = l?.depTrack ?? l?.origin?.plannedTrack ?? "?";
+  const arrTrack = l?.arrTrack ?? l?.destination?.plannedTrack ?? "?";
+
+  const delayMin = l?.delayMin ?? l?.origin?.delayInMinutes ?? 0;
+
+  const product =
+    (typeof l?.product === "string" ? l.product : null) ||
+    l?.product?.longCategoryName ||
+    l?.product?.shortCategoryName ||
+    l?.product?.categoryName ||
+    "Trein";
+
+  return { dep, arr, originName, destName, depTrack, arrTrack, delayMin, product };
+}
+
+function computeTransfersFromLegs(legs){
+  const transfers = [];
+  let minTransferMin = null;
+
+  if (!Array.isArray(legs) || legs.length < 2) {
+    return { transfers, minTransferMin };
+  }
+
+  const nlegs = legs.map(normLeg);
+  for (let i=0; i<nlegs.length-1; i++){
+    const a = nlegs[i];
+    const b = nlegs[i+1];
+    if (!a.arr || !b.dep) continue;
+
+    const aT = Date.parse(a.arr);
+    const bT = Date.parse(b.dep);
+    if (!isFinite(aT) || !isFinite(bT)) continue;
+
+    const m = Math.round((bT - aT)/60000);
+    const station = a.destName || "Overstap";
+
+    transfers.push({ station, minutes: m });
+    if (minTransferMin === null || m < minTransferMin) minTransferMin = m;
+  }
+
+  return { transfers, minTransferMin };
+}
+
+/* Sort by start time */
+function sortByStartTime(arr){
+  return arr.sort((a,b)=> (+new Date(a.depart)) - (+new Date(b.depart)));
+}
+
+/* ------------ state keys ------------ */
+const LS = {
+  theme:"theme",
+  modus:"modus",
+  van:"last_van",
+  naar:"last_naar",
+  date:"last_date",
+  hour:"last_hour",
+  minute:"last_minute"
+};
+
+/* ------------ elements ------------ */
+const modusSel = document.getElementById("modus");
+const darkToggle = document.getElementById("darkToggle");
+const vanInput = document.getElementById("van");
+const naarInput = document.getElementById("naar");
+const stationsVan = document.getElementById("stationsVan");
+const stationsNaar = document.getElementById("stationsNaar");
+const dateInput = document.getElementById("dateInput");
+const hourSelect = document.getElementById("hourSelect");
+const minuteSelect = document.getElementById("minuteSelect");
+const wisselBtn = document.getElementById("wisselBtn");
+const zoekBtn = document.getElementById("zoekBtn");
+const favBtn = document.getElementById("favBtn");
+const favDiv = document.getElementById("favorieten");
+const resultaat = document.getElementById("resultaat");
+const humanErrorEl = document.getElementById("humanError");
+
+/* ------------ theme + mode remember ------------ */
+if (localStorage.getItem(LS.theme) === "dark"){
+  document.documentElement.setAttribute("data-theme","dark");
+  darkToggle.checked = true;
+}
+darkToggle.addEventListener("change", ()=>{
+  const d = darkToggle.checked;
+  document.documentElement.setAttribute("data-theme", d ? "dark" : "light");
+  localStorage.setItem(LS.theme, d ? "dark" : "light");
+});
+
+const savedMode = localStorage.getItem(LS.modus);
+if (savedMode) modusSel.value = savedMode;
+modusSel.addEventListener("change", ()=>localStorage.setItem(LS.modus, modusSel.value));
+
+/* date fully clickable */
+dateInput.addEventListener("click", ()=>{
+  if (dateInput.showPicker) dateInput.showPicker();
+  else dateInput.focus();
+});
+
+/* fill time selects */
+for(let h=0; h<24; h++){
+  const o=document.createElement("option");
+  o.value=pad2(h); o.textContent=pad2(h);
+  hourSelect.appendChild(o);
+}
+for(let m=0; m<60; m+=5){
+  const o=document.createElement("option");
+  o.value=pad2(m); o.textContent=pad2(m);
+  minuteSelect.appendChild(o);
+}
+
+/* load saved inputs */
+vanInput.value = localStorage.getItem(LS.van) || "";
+naarInput.value = localStorage.getItem(LS.naar) || "";
+dateInput.value = localStorage.getItem(LS.date) || "";
+hourSelect.value = localStorage.getItem(LS.hour) || "";
+minuteSelect.value = localStorage.getItem(LS.minute) || "";
+
+const now = roundTo5Min(new Date());
+if (!dateInput.value) dateInput.value = localISODate(now);
+if (!hourSelect.value) hourSelect.value = pad2(now.getHours());
+if (!minuteSelect.value) minuteSelect.value = pad2(now.getMinutes());
+
+function persist(){
+  localStorage.setItem(LS.van, vanInput.value);
+  localStorage.setItem(LS.naar, naarInput.value);
+  localStorage.setItem(LS.date, dateInput.value);
+  localStorage.setItem(LS.hour, hourSelect.value);
+  localStorage.setItem(LS.minute, minuteSelect.value);
+}
+["input","change"].forEach(evt=>{
+  vanInput.addEventListener(evt, persist);
+  naarInput.addEventListener(evt, persist);
+  dateInput.addEventListener(evt, persist);
+  hourSelect.addEventListener(evt, persist);
+  minuteSelect.addEventListener(evt, persist);
+});
+
+/* click-to-clear stations (zelfde als jouw origineel) */
+function clearOnClick(el, key){
+  el.addEventListener("click", ()=>{
+    if (el.value.trim()) {
+      el.value = "";
+      localStorage.setItem(key,"");
+    }
+  });
+}
+clearOnClick(vanInput, LS.van);
+clearOnClick(naarInput, LS.naar);
+
+/* ------------ autocomplete (sneller: cache + abort) ------------ */
+let vanList = [];
+let naarList = [];
+
+const stationCache = new Map(); // key: query lowercase -> array
+let stationAbortVan = null;
+let stationAbortNaar = null;
+
+function normName(x){ return (x||"").trim().toLowerCase(); }
+
+async function loadStations(q, listEl, store, which){
+  const query = (q || "").trim();
+  if (query.length < 2) return;
+
+  const key = query.toLowerCase();
+  if (stationCache.has(key)){
+    const data = stationCache.get(key) || [];
+    listEl.innerHTML = "";
+    store.length = 0;
+    data.forEach(s=>{
+      const opt=document.createElement("option");
+      opt.value = s.namen.lang;
+      listEl.appendChild(opt);
+      store.push(s);
+    });
+    return;
+  }
+
+  // abort previous request for this field
+  if (which === "van"){
+    if (stationAbortVan) stationAbortVan.abort();
+    stationAbortVan = new AbortController();
+  } else {
+    if (stationAbortNaar) stationAbortNaar.abort();
+    stationAbortNaar = new AbortController();
+  }
+  const signal = (which === "van") ? stationAbortVan.signal : stationAbortNaar.signal;
+
+  const data = await fetchJson(`/stations?q=${encodeURIComponent(query)}`, { signal });
+  stationCache.set(key, data || []);
+
+  listEl.innerHTML = "";
+  store.length = 0;
+  (data||[]).forEach(s=>{
+    const opt=document.createElement("option");
+    opt.value = s.namen.lang;
+    listEl.appendChild(opt);
+    store.push(s);
+  });
+}
+
+// iets hogere debounce = minder calls
+vanInput.addEventListener("input", debounce(()=>loadStations(vanInput.value, stationsVan, vanList, "van"), 400));
+naarInput.addEventListener("input", debounce(()=>loadStations(naarInput.value, stationsNaar, naarList, "naar"), 400));
+
+async function resolveCode(name, store){
+  const wanted = normName(name);
+
+  // 1) store
+  const hit = store.find(s=> normName(s.namen.lang) === wanted);
+  if (hit) return hit.code;
+
+  // 2) cache
+  for (const arr of stationCache.values()){
+    const ex = (arr||[]).find(s=> normName(s.namen.lang) === wanted);
+    if (ex) return ex.code;
+  }
+
+  // 3) fallback fetch
+  const data = await fetchJson(`/stations?q=${encodeURIComponent(name)}`);
+  const exact = (data||[]).find(s=> normName(s.namen.lang) === wanted);
+  return exact ? exact.code : null;
+}
+
+function buildDateTime(){
+  return `${dateInput.value}T${hourSelect.value}:${minuteSelect.value}`;
+}
+
+/* Render expandable trip card (lazy build details) */
+function renderExpandableTrip(opt){
+  const card = document.createElement("div");
+  card.className = "resultCard";
+
+  const depart = opt.depart;
+  const arrive = opt.arrive;
+  const durationMin = opt.durationMin;
+  const legs = opt.legs || [];
+  const transfersCount = Math.max(0, legs.length - 1);
+
+  const transfersInfo = opt.transfersInfo || computeTransfersFromLegs(legs);
+  const transfers = transfersInfo.transfers || [];
+  const minTransferMin = transfersInfo.minTransferMin ?? null;
+  const minCls = transferClass(minTransferMin);
+
+  const header = document.createElement("div");
+  header.className = "resultHeader";
+  header.innerHTML = `
+    <div class="resultHeaderLeft">
+      <div class="tripTitle">Totale reistijd: ${durationMin} min</div>
+      <div class="timeBig"><span>${fmtTime(depart)}</span> → <span>${fmtTime(arrive)}</span></div>
+      <div class="badgeRow">
+        <span class="badge">Overstappen: ${transfersCount}</span>
+        ${minTransferMin !== null ? `<span class="badge ${minCls}">Min overstap: ${minTransferMin} min</span>` : ""}
+      </div>
+    </div>
+    <div class="chev">▾</div>
+  `;
+
+  const details = document.createElement("div");
+  details.className = "details";
+
+  let built = false;
+  function buildDetails(){
+    if (built) return;
+    built = true;
+
+    if (minTransferMin !== null && minTransferMin < 3) {
+      const w = document.createElement("div");
+      w.className = "warn";
+      w.textContent = `⚠️ Korte overstaptijd: minimaal ${minTransferMin} minuten.`;
+      details.appendChild(w);
+    }
+
+    if (transfers.length){
+      const tl = document.createElement("div");
+      tl.className = "transferList";
+      tl.innerHTML = `<b>Overstappen</b>`;
+      transfers.forEach(t=>{
+        const item = document.createElement("div");
+        item.className = "transferItem";
+        item.innerHTML = `
+          <div class="transferLeft">${t.station}</div>
+          <div class="transferRight ${transferClass(t.minutes)}">${t.minutes} min</div>
+        `;
+        tl.appendChild(item);
+      });
+      details.appendChild(tl);
+    }
+
+    const hr = document.createElement("div");
+    hr.className = "hr";
+    details.appendChild(hr);
+
+    legs.forEach((l, idx)=>{
+      const x = normLeg(l);
+
+      const legEl = document.createElement("div");
+      legEl.className = "leg";
+      legEl.innerHTML = `
+        <div class="legTop">
+          <div>🚆 ${x.product}</div>
+          <div>${fmtTime(x.dep)} → ${fmtTime(x.arr)}</div>
+        </div>
+        <div class="legLine">
+          ${x.originName || "—"} (spoor ${x.depTrack ?? "?"}) → ${x.destName || "—"} (spoor ${x.arrTrack ?? "?"})
+          ${x.delayMin > 0 ? `<span class="delay"> +${x.delayMin} min</span>` : ""}
+        </div>
+      `;
+      details.appendChild(legEl);
+
+      if (idx < legs.length - 1) {
+        const hr2 = document.createElement("div");
+        hr2.className = "hr";
+        details.appendChild(hr2);
+      }
+    });
+  }
+
+  header.addEventListener("click", ()=>{
+    const willOpen = !details.classList.contains("open");
+    if (willOpen) buildDetails();
+    const isOpen = details.classList.toggle("open");
+    header.querySelector(".chev").textContent = isOpen ? "▴" : "▾";
+  });
+
+  card.appendChild(header);
+  card.appendChild(details);
+  return card;
+}
+
+/* Search (sneller: parallel resolve + fragment render + abort previous) */
+let inFlightSearch = null;
+
+async function zoekReis(){
+  humanErrorEl.textContent = "";
+  resultaat.innerHTML = "";
+
+  if (inFlightSearch) inFlightSearch.abort();
+  inFlightSearch = new AbortController();
+  const signal = inFlightSearch.signal;
+
+  try{
+    const vanName = vanInput.value.trim();
+    const naarName = naarInput.value.trim();
+    const dt = buildDateTime();
+
+    if (!vanName || !naarName) return alert("Vul van en naar in.");
+    if (!dt) return alert("Kies datum/tijd.");
+
+    // UI direct
+    zoekBtn.disabled = true;
+    zoekBtn.textContent = "Zoeken…";
+
+    const [vanCode, naarCode] = await Promise.all([
+      resolveCode(vanName, vanList),
+      resolveCode(naarName, naarList)
+    ]);
+    if (!vanCode || !naarCode) return alert("Kies stations uit de lijst (klik op een suggestie).");
+
+    if (modusSel.value === "extremeb"){
+      const data = await fetchJson(`/reis-extreme-b?van=${encodeURIComponent(vanCode)}&naar=${encodeURIComponent(naarCode)}&datetime=${encodeURIComponent(dt)}`, { signal });
+      const opts = Array.isArray(data.options) ? data.options : [];
+      if (!opts.length) {
+        resultaat.innerHTML = `<div class="resultCard">Geen opties gevonden.</div>`;
+        return;
+      }
+
+      opts.forEach(o=>{
+        o.transfersInfo = o.transfersInfo || computeTransfersFromLegs(o.legs || []);
+      });
+
+      const frag = document.createDocumentFragment();
+      sortByStartTime(opts).forEach(o=>{
+        frag.appendChild(renderExpandableTrip(o));
+      });
+      resultaat.appendChild(frag);
+
+    } else {
+      const data = await fetchJson(`/reis?van=${encodeURIComponent(vanCode)}&naar=${encodeURIComponent(naarCode)}&datetime=${encodeURIComponent(dt)}&extreme=1`, { signal });
+      const trips = Array.isArray(data.trips) ? data.trips : [];
+      if (!trips.length) {
+        resultaat.innerHTML = `<div class="resultCard">Geen opties gevonden.</div>`;
+        return;
+      }
+
+      const opts = trips.map(t=>{
+        const legs = t.legs || [];
+        if (!legs.length) return null;
+
+        const first = normLeg(legs[0]);
+        const last  = normLeg(legs[legs.length-1]);
+        const depart = first.dep;
+        const arrive = last.arr;
+        if (!depart || !arrive) return null;
+
+        const depT = Date.parse(depart);
+        const arrT = Date.parse(arrive);
+        if (!isFinite(depT) || !isFinite(arrT)) return null;
+
+        const durationMin = Math.round((arrT - depT)/60000);
+        const transfersInfo = computeTransfersFromLegs(legs);
+
+        return { depart, arrive, durationMin, legs, transfersInfo };
+      }).filter(Boolean);
+
+      const frag = document.createDocumentFragment();
+      sortByStartTime(opts).slice(0,10).forEach(o=>{
+        frag.appendChild(renderExpandableTrip(o));
+      });
+      resultaat.appendChild(frag);
+    }
+  } catch(e){
+    const msg = humanizeError(e);
+    if (msg) {
+      humanErrorEl.textContent = msg;
+      resultaat.innerHTML = `<div class="resultCard">${msg}</div>`;
+    }
+  } finally{
+    zoekBtn.disabled = false;
+    zoekBtn.textContent = "Zoek reis";
+  }
+}
+
+/* Enter = zoeken */
+[vanInput, naarInput, dateInput, hourSelect, minuteSelect].forEach(el=>{
+  el.addEventListener("keydown",(e)=>{
+    if (e.key==="Enter"){ e.preventDefault(); zoekReis(); }
+  });
+});
+zoekBtn.addEventListener("click", zoekReis);
+
+/* Wissel */
+wisselBtn.addEventListener("click", ()=>{
+  const t = vanInput.value;
+  vanInput.value = naarInput.value;
+  naarInput.value = t;
+  persist();
+});
+
+/* Favorieten */
+async function laadFavorieten(){
+  try{
+    const favs = await fetchJson("/favorieten");
+    favDiv.innerHTML = "";
+    if (!Array.isArray(favs) || favs.length===0){
+      favDiv.innerHTML = `<div class="small">Nog geen favorieten.</div>`;
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    favs.forEach((f,i)=>{
+      const row = document.createElement("div");
+      row.className = "favitem";
+      row.innerHTML = `<span>${f.van} → ${f.naar}</span><button class="favDel" type="button">✖</button>`;
+      row.querySelector("span").onclick = ()=>{
+        vanInput.value = f.van;
+        naarInput.value = f.naar;
+        persist();
+      };
+      row.querySelector("button").onclick = async ()=>{
+        await fetchJson("/favorieten/" + i, {method:"DELETE"});
+        laadFavorieten();
+      };
+      frag.appendChild(row);
+    });
+    favDiv.appendChild(frag);
+  } catch {
+    favDiv.innerHTML = `<div class="small">Favorieten konden niet geladen worden.</div>`;
+  }
+}
+favBtn.addEventListener("click", async ()=>{
+  const van = vanInput.value.trim();
+  const naar = naarInput.value.trim();
+  if (!van || !naar) return alert("Vul van en naar in.");
+  await fetchJson("/favorieten", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({van, naar})
+  });
+  laadFavorieten();
+});
+laadFavorieten();
+
+/* PWA */
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js");
+}
+</script>
+
+</body>
+</html>
