@@ -1,4 +1,4 @@
-// server.js (Render-ready, p-limit + rate limiting + caching + slimme Extreme-B)
+// server.js (Render-ready: p-limit + rate limiting + caching + prefix fallback + slimme Extreme-B)
 import express from "express";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
@@ -11,24 +11,42 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.set("trust proxy", 1);
 app.use(express.json());
-app.use(express.static("public"));
 
 /* =========================
-   Rate limiting (beveiliging)
+   Security headers (lightweight)
    ========================= */
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  // NB: geen CSP hier om PWA / inline scripts niet te breken
+  next();
+});
 
-// algemeen (sitebreed)
+/* =========================
+   Static files (cache)
+   ========================= */
+app.use(
+  express.static("public", {
+    maxAge: "1h",
+    etag: true,
+  })
+);
+
+/* =========================
+   Rate limiting
+   ========================= */
 app.use(
   rateLimit({
-    windowMs: 60 * 1000, // 1 min
-    max: 180, // 180 req/min per IP
+    windowMs: 60 * 1000,
+    max: 180,
     standardHeaders: true,
     legacyHeaders: false,
   })
 );
 
-// "dure" endpoints (NS trips)
 const heavyLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 40,
@@ -38,10 +56,9 @@ const heavyLimiter = rateLimit({
 app.use("/reis", heavyLimiter);
 app.use("/reis-extreme-b", heavyLimiter);
 
-// autocomplete (stations)
 const stationLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 120,
+  max: 140,
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -50,13 +67,11 @@ app.use("/stations", stationLimiter);
 /* =========================
    NS API
    ========================= */
-
 const API_KEY = process.env.NS_API_KEY;
 if (!API_KEY) console.error("❌ NS_API_KEY ontbreekt in environment variables");
 
 const headers = { "Ocp-Apim-Subscription-Key": API_KEY };
 
-// Extreme parameters (zoals je al gebruikte)
 const EXTREME = {
   minTransferTime: 0,
   additionalTransferTime: 0,
@@ -72,16 +87,14 @@ function requireApiKey(res) {
 }
 
 /* =========================
-   Concurrency limits (p-limit)
+   Concurrency (p-limit)
    ========================= */
-
 const limitTrips = pLimit(6);
 const limitStations = pLimit(4);
 
 /* =========================
-   Fetch helpers (timeout + status)
+   Fetch helpers (timeout + JSON strict)
    ========================= */
-
 async function fetchWithTimeout(url, options = {}, ms = 10000) {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), ms);
@@ -114,7 +127,6 @@ async function fetchJsonStrict(url, options = {}, ms = 10000) {
 /* =========================
    FAVORIETEN (async fs)
    ========================= */
-
 const FAVORIET_FILE = "./favorieten.json";
 
 async function ensureFavFile() {
@@ -169,38 +181,90 @@ app.delete("/favorieten/:index", async (req, res) => {
 });
 
 /* =========================
-   STATIONS (autocomplete) + cache TTL
+   STATIONS (autocomplete) — FAST
+   - TTL cache
+   - prefix fallback
+   - in-flight dedupe
+   - Cache-Control
    ========================= */
-
 const stationSearchCache = new Map(); // key -> {t,payload}
-const STATION_TTL_MS = 10 * 60 * 1000; // 10 min
+const stationInFlight = new Map(); // key -> Promise<payload>
+const STATION_TTL_MS = 30 * 60 * 1000; // 30 min
+
+function cacheGet(key) {
+  const hit = stationSearchCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.t > STATION_TTL_MS) {
+    stationSearchCache.delete(key);
+    return null;
+  }
+  return hit.payload;
+}
+function cacheSet(key, payload) {
+  stationSearchCache.set(key, { t: Date.now(), payload });
+}
+function bestPrefixCached(key) {
+  for (let i = key.length - 1; i >= 2; i--) {
+    const pref = key.slice(0, i);
+    const val = cacheGet(pref);
+    if (val) return val;
+  }
+  return null;
+}
+
+async function fetchStationsFromNS(q) {
+  const url = `https://gateway.apiportal.ns.nl/reisinformatie-api/api/v2/stations?q=${encodeURIComponent(q)}`;
+  const data = await limitStations(() => fetchJsonStrict(url, { headers }, 8000));
+  return data.payload || [];
+}
 
 async function fetchStationsCached(q) {
   const key = (q || "").trim().toLowerCase();
   if (!key) return [];
 
-  const hit = stationSearchCache.get(key);
-  const now = Date.now();
-  if (hit && now - hit.t < STATION_TTL_MS) return hit.payload;
+  const exact = cacheGet(key);
+  if (exact) return exact;
 
-  const url = `https://gateway.apiportal.ns.nl/reisinformatie-api/api/v2/stations?q=${encodeURIComponent(
-    q
-  )}`;
+  if (stationInFlight.has(key)) return stationInFlight.get(key);
 
-  const data = await limitStations(() => fetchJsonStrict(url, { headers }, 8000));
-  const payload = data.payload || [];
+  const p = (async () => {
+    try {
+      const payload = await fetchStationsFromNS(q);
+      cacheSet(key, payload);
+      return payload;
+    } finally {
+      stationInFlight.delete(key);
+    }
+  })();
 
-  stationSearchCache.set(key, { t: now, payload });
-  return payload;
+  stationInFlight.set(key, p);
+  return p;
 }
 
 app.get("/stations", async (req, res) => {
   if (!requireApiKey(res)) return;
-  const q = String(req.query.q || "");
-  if (!q.trim()) return res.json([]);
+
+  const q = String(req.query.q || "").trim();
+  if (!q) return res.json([]);
+
+  res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+
+  const key = q.toLowerCase();
 
   try {
-    const payload = await fetchStationsCached(q);
+    const exact = cacheGet(key);
+
+    // ✅ snelle prefix response (instant gevoel)
+    if (!exact) {
+      const pref = bestPrefixCached(key);
+      if (pref) {
+        res.json(pref);
+        fetchStationsCached(q).catch(() => {});
+        return;
+      }
+    }
+
+    const payload = exact || (await fetchStationsCached(q));
     res.json(payload);
   } catch (err) {
     console.error("Stations fout:", err.message || err);
@@ -211,7 +275,6 @@ app.get("/stations", async (req, res) => {
 /* =========================
    TRIPS helpers
    ========================= */
-
 async function fetchTrips({ from, to, dateTimeISO, extraParams = {} }) {
   const base = new URL("https://gateway.apiportal.ns.nl/reisinformatie-api/api/v3/trips");
   base.searchParams.set("fromStation", from);
@@ -283,6 +346,9 @@ function combineOptions(optA, optB) {
   const bDep = Date.parse(optB.depart);
   const transferMin = Math.round((bDep - aArr) / 60000);
 
+  // ✅ nooit negatieve overstap toestaan
+  if (!Number.isFinite(transferMin) || transferMin < 0) return null;
+
   let minTransferMin = optA.minTransferMin;
   if (minTransferMin === null || minTransferMin === undefined) minTransferMin = transferMin;
   minTransferMin = Math.min(minTransferMin, transferMin);
@@ -311,7 +377,6 @@ function optionSignature(o) {
 /* =========================
    /reis (NORMAAL)
    ========================= */
-
 app.get("/reis", async (req, res) => {
   if (!requireApiKey(res)) return;
   const { van, naar, datetime, extreme } = req.query;
@@ -337,11 +402,11 @@ app.get("/reis", async (req, res) => {
 
 /* =========================
    /reis-extreme-b (SLIMMER)
-   - kiest beste via’s op basis van frequentie
-   - p-limit parallel
-   - pruned search (TOP_A / TOP_B / MAX_TRANSFER)
+   - via’s op frequentie
+   - parallel met p-limit
+   - pruning TOP_A/TOP_B/MAX_TRANSFER
+   - dedupe + sort
    ========================= */
-
 app.get("/reis-extreme-b", async (req, res) => {
   if (!requireApiKey(res)) return;
   const { van, naar, datetime } = req.query;
@@ -351,15 +416,14 @@ app.get("/reis-extreme-b", async (req, res) => {
   const TO = String(naar);
   const DT = String(datetime);
 
-  // Tunables (sneller = lager, meer opties = hoger)
-  const MAX_VIA = 8; // maximaal aantal via-stations om te proberen
-  const TOP_A = 5; // top A-opties per via
-  const TOP_B = 8; // top B-opties per A
-  const MAX_TRANSFER = 20; // alleen overstappen 0..20 min
-  const TARGET = 10; // output count
+  // Tunables
+  const MAX_VIA = 8;
+  const TOP_A = 5;
+  const TOP_B = 8;
+  const MAX_TRANSFER = 20; // alleen 0..20 min overstap
+  const TARGET = 10;
 
   function scoreOption(o) {
-    // lagere score = beter
     const minT = o.minTransferMin ?? 999;
     const penalty = minT > 10 ? (minT - 10) * 2 : 0;
     return o.durationMin + penalty;
@@ -379,7 +443,6 @@ app.get("/reis-extreme-b", async (req, res) => {
     // 2) Baseline opties (directe trips)
     const options = baseTrips.map(tripToOption).filter(Boolean);
 
-    // Als we al genoeg hebben: sorteer en return
     if (options.length >= TARGET) {
       options.sort((a, b) => scoreOption(a) - scoreOption(b));
       return res.json({ options: options.slice(0, TARGET) });
@@ -420,9 +483,9 @@ app.get("/reis-extreme-b", async (req, res) => {
     const best = [];
     function pushBest(o) {
       best.push(o);
-      if (best.length > 60) {
+      if (best.length > 80) {
         best.sort((a, b) => scoreOption(a) - scoreOption(b));
-        best.length = 40;
+        best.length = 55;
       }
     }
 
@@ -461,7 +524,9 @@ app.get("/reis-extreme-b", async (req, res) => {
                 const transferMin = Math.round(
                   (Date.parse(optB.depart) - Date.parse(optA.arrive)) / 60000
                 );
-                if (transferMin < 0 || transferMin > MAX_TRANSFER) continue;
+
+                // ✅ filter: nooit negatief, en max overstap
+                if (!Number.isFinite(transferMin) || transferMin < 0 || transferMin > MAX_TRANSFER) continue;
 
                 const c = combineOptions(optA, optB);
                 if (c) pushBest(c);
@@ -496,7 +561,6 @@ app.get("/reis-extreme-b", async (req, res) => {
 /* =========================
    Start
    ========================= */
-
 app.listen(PORT, () => {
   console.log(`✅ Server draait op http://localhost:${PORT} (PORT=${PORT})`);
 });
