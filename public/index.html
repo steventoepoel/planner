@@ -1,17 +1,17 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Toepoel's</title>
 
 <!-- ✅ Versie -->
-<meta name="app-version" content="1.03">
+<meta name="app-version" content="1.05" />
 
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#275D63">
-<link rel="icon" type="image/png" href="/logo-192.png">
-<link rel="apple-touch-icon" href="/logo-192.png">
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#275D63" />
+<link rel="icon" type="image/png" href="/logo-192.png" />
+<link rel="apple-touch-icon" href="/logo-192.png" />
 
 <style>
 :root{
@@ -117,7 +117,7 @@ header{
   opacity:0.95;
 }
 
-/* ✅ Verberg "⚡ Altijd Extreem" op mobiel */
+/* Hide header text on mobile */
 @media (max-width:768px){
   .headerControls{ display:none; }
 }
@@ -327,7 +327,6 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
 </head>
 
 <body>
-
 <header>
   <div class="safe">
     <div class="headerRow">
@@ -336,6 +335,7 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
         <div class="tagline">Dé reisplanner met <u>alle</u> overstappen!</div>
       </div>
 
+      <!-- ✅ desktop only -->
       <div class="headerControls" title="Altijd Extreem-B ingeschakeld">
         ⚡ Altijd Extreem
       </div>
@@ -344,14 +344,13 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
 </header>
 
 <div class="container safe">
-
   <div class="card">
     <label>Van</label>
-    <input id="van" list="stationsVan" placeholder="Typ station (kies uit lijst)">
+    <input id="van" list="stationsVan" placeholder="Typ station (kies uit lijst)" autocomplete="off">
     <datalist id="stationsVan"></datalist>
 
     <label>Naar</label>
-    <input id="naar" list="stationsNaar" placeholder="Typ station (kies uit lijst)">
+    <input id="naar" list="stationsNaar" placeholder="Typ station (kies uit lijst)" autocomplete="off">
     <datalist id="stationsNaar"></datalist>
 
     <label>Datum & tijd</label>
@@ -378,7 +377,7 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   </div>
 
   <div class="card favlist">
-    <b>Favorieten</b>
+    <b>Favorieten (alleen op dit apparaat)</b>
     <div id="favorieten"></div>
   </div>
 
@@ -418,6 +417,10 @@ function fmtTime(iso){
 }
 function humanizeError(err){
   const msg = String(err || "");
+
+  if (msg.includes("Vertrek- en aankomststation mogen niet hetzelfde zijn"))
+    return "⚠️ Je hebt hetzelfde station gekozen bij vertrek en aankomst.";
+
   if (!navigator.onLine) return "Je bent offline. Probeer later opnieuw.";
   if (msg.includes("HTTP 401") || msg.includes("HTTP 403")) return "NS API key werkt niet (toegang geweigerd).";
   if (msg.includes("HTTP 500") || msg.includes("HTTP 502") || msg.includes("HTTP 503")) return "NS API is tijdelijk niet bereikbaar.";
@@ -451,7 +454,7 @@ function transferClass(min){
   return "good";
 }
 
-/* Normalize leg: supports both NS trips legs and Extreme-B legs */
+/* Normalize leg */
 function normLeg(l){
   const dep = l?.dep || l?.origin?.plannedDateTime || null;
   const arr = l?.arr || l?.destination?.plannedDateTime || null;
@@ -474,27 +477,13 @@ function normLeg(l){
   return { dep, arr, originName, destName, depTrack, arrTrack, delayMin, product };
 }
 
-/* ✅ Sort legs chronologisch om negatieve overstappen te voorkomen */
-function sortLegsChrono(legs){
-  if (!Array.isArray(legs)) return [];
-  return [...legs].sort((a,b)=>{
-    const ad = Date.parse(normLeg(a).dep || 0);
-    const bd = Date.parse(normLeg(b).dep || 0);
-    return (ad - bd);
-  });
-}
-
-/* ✅ Transfers berekenen (met detectie voor negatieve overstappen) */
 function computeTransfersFromLegs(legs){
   const transfers = [];
   let minTransferMin = null;
-  let hasNegative = false;
 
-  const sorted = sortLegsChrono(legs);
-  if (sorted.length < 2) return { transfers, minTransferMin, hasNegative };
+  if (!Array.isArray(legs) || legs.length < 2) return { transfers, minTransferMin };
 
-  const nlegs = sorted.map(normLeg);
-
+  const nlegs = legs.map(normLeg);
   for (let i=0; i<nlegs.length-1; i++){
     const a = nlegs[i];
     const b = nlegs[i+1];
@@ -505,15 +494,15 @@ function computeTransfersFromLegs(legs){
     if (!isFinite(aT) || !isFinite(bT)) continue;
 
     const m = Math.round((bT - aT)/60000);
-    if (m < 0) hasNegative = true;
-
     const station = a.destName || "Overstap";
-    transfers.push({ station, minutes: m });
 
+    // ✅ laat geen negatieve overstappen zien
+    if (m < 0) continue;
+
+    transfers.push({ station, minutes: m });
     if (minTransferMin === null || m < minTransferMin) minTransferMin = m;
   }
-
-  return { transfers, minTransferMin, hasNegative };
+  return { transfers, minTransferMin };
 }
 
 function sortByStartTime(arr){
@@ -541,6 +530,21 @@ const favDiv = document.getElementById("favorieten");
 const resultaat = document.getElementById("resultaat");
 const humanErrorEl = document.getElementById("humanError");
 
+/* ✅ keyboard weg als je ergens tikt (mobile) */
+function dismissKeyboard(){
+  document.activeElement?.blur?.();
+}
+document.addEventListener("touchstart", (e) => {
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.closest?.("button"))) return;
+  dismissKeyboard();
+}, { passive:true });
+document.addEventListener("click", (e) => {
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.closest?.("button"))) return;
+  dismissKeyboard();
+});
+
 /* date fully clickable */
 dateInput.addEventListener("click", ()=>{
   if (dateInput.showPicker) dateInput.showPicker();
@@ -559,7 +563,7 @@ for(let m=0; m<60; m+=5){
   minuteSelect.appendChild(o);
 }
 
-/* load saved inputs (alleen van/naar) */
+/* load saved inputs */
 vanInput.value = localStorage.getItem(LS.van) || "";
 naarInput.value = localStorage.getItem(LS.naar) || "";
 
@@ -590,7 +594,7 @@ function clearOnClick(el, key){
 clearOnClick(vanInput, LS.van);
 clearOnClick(naarInput, LS.naar);
 
-/* ------------ autocomplete (SNELLER) ------------ */
+/* ------------ autocomplete (sneller) ------------ */
 let vanList = [];
 let naarList = [];
 
@@ -602,7 +606,7 @@ function normName(x){ return (x||"").trim().toLowerCase(); }
 
 async function loadStations(q, listEl, store, which){
   const query = (q || "").trim();
-  if (query.length < 1) return; // ✅ al vanaf 1 teken
+  if (query.length < 1) return; // al vanaf 1 teken
 
   const key = query.toLowerCase();
   if (stationCache.has(key)){
@@ -641,7 +645,6 @@ async function loadStations(q, listEl, store, which){
   });
 }
 
-/* ✅ Lagere debounce (sneller) */
 vanInput.addEventListener("input", debounce(()=>loadStations(vanInput.value, stationsVan, vanList, "van"), 200));
 naarInput.addEventListener("input", debounce(()=>loadStations(naarInput.value, stationsNaar, naarList, "naar"), 200));
 
@@ -673,9 +676,7 @@ function renderExpandableTrip(opt){
   const depart = opt.depart;
   const arrive = opt.arrive;
   const durationMin = opt.durationMin;
-
-  /* ✅ Sort legs zodat UI en overstappen kloppen */
-  const legs = sortLegsChrono(opt.legs || []);
+  const legs = opt.legs || [];
   const transfersCount = Math.max(0, legs.length - 1);
 
   const transfersInfo = opt.transfersInfo || computeTransfersFromLegs(legs);
@@ -775,6 +776,12 @@ async function zoekReis(){
   humanErrorEl.textContent = "";
   resultaat.innerHTML = "";
 
+  // ✅ client-side check: zelfde station
+  if (vanInput.value.trim().toLowerCase() === naarInput.value.trim().toLowerCase()) {
+    humanErrorEl.textContent = "⚠️ Je hebt hetzelfde station gekozen bij vertrek en aankomst.";
+    return;
+  }
+
   if (inFlightSearch) inFlightSearch.abort();
   inFlightSearch = new AbortController();
   const signal = inFlightSearch.signal;
@@ -805,22 +812,12 @@ async function zoekReis(){
       return;
     }
 
-    /* ✅ Sort legs + recompute transfers + filter negatieve overstappen */
-    const cleaned = opts
-      .map(o=>{
-        o.legs = sortLegsChrono(o.legs || []);
-        o.transfersInfo = computeTransfersFromLegs(o.legs);
-        return o;
-      })
-      .filter(o=> !o.transfersInfo?.hasNegative);
-
-    if (!cleaned.length){
-      resultaat.innerHTML = `<div class="resultCard">Geen geldige opties gevonden.</div>`;
-      return;
-    }
+    opts.forEach(o=>{
+      o.transfersInfo = o.transfersInfo || computeTransfersFromLegs(o.legs || []);
+    });
 
     const frag = document.createDocumentFragment();
-    sortByStartTime(cleaned).forEach(o=>{
+    sortByStartTime(opts).forEach(o=>{
       frag.appendChild(renderExpandableTrip(o));
     });
     resultaat.appendChild(frag);
@@ -853,66 +850,93 @@ wisselBtn.addEventListener("click", ()=>{
   persistStations();
 });
 
-/* Favorieten */
-async function laadFavorieten(){
-  try{
-    const favs = await fetchJson("/favorieten");
-    favDiv.innerHTML = "";
-    if (!Array.isArray(favs) || favs.length===0){
-      favDiv.innerHTML = `<div class="small">Nog geen favorieten.</div>`;
-      return;
-    }
-    const frag = document.createDocumentFragment();
-    favs.forEach((f,i)=>{
-      const row = document.createElement("div");
-      row.className = "favitem";
-      row.innerHTML = `<span>${f.van} → ${f.naar}</span><button class="favDel" type="button">✖</button>`;
-      row.querySelector("span").onclick = ()=>{
-        vanInput.value = f.van;
-        naarInput.value = f.naar;
-        persistStations();
-      };
-      row.querySelector("button").onclick = async ()=>{
-        await fetchJson("/favorieten/" + i, {method:"DELETE"});
-        laadFavorieten();
-      };
-      frag.appendChild(row);
-    });
-    favDiv.appendChild(frag);
+/* =========================
+   FAVORIETEN (LOCALSTORAGE v1.05)
+   ========================= */
+const FAV_KEY = "planner_favorieten_v1";
+
+function getFavs() {
+  try {
+    const raw = localStorage.getItem(FAV_KEY);
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    favDiv.innerHTML = `<div class="small">Favorieten konden niet geladen worden.</div>`;
+    return [];
   }
 }
-favBtn.addEventListener("click", async ()=>{
+
+function saveFavs(favs) {
+  localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+}
+
+function laadFavorieten() {
+  const favs = getFavs();
+  favDiv.innerHTML = "";
+
+  if (!favs.length) {
+    favDiv.innerHTML = `<div class="small">Nog geen favorieten.</div>`;
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+
+  favs.forEach((f, i) => {
+    const row = document.createElement("div");
+    row.className = "favitem";
+    row.innerHTML = `
+      <span>${f.van} → ${f.naar}</span>
+      <button class="favDel" type="button">✖</button>
+    `;
+
+    row.querySelector("span").onclick = () => {
+      vanInput.value = f.van;
+      naarInput.value = f.naar;
+      persistStations();
+      dismissKeyboard();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    row.querySelector("button").onclick = () => {
+      const updated = getFavs();
+      updated.splice(i, 1);
+      saveFavs(updated);
+      laadFavorieten();
+    };
+
+    frag.appendChild(row);
+  });
+
+  favDiv.appendChild(frag);
+}
+
+favBtn.addEventListener("click", () => {
   const van = vanInput.value.trim();
   const naar = naarInput.value.trim();
   if (!van || !naar) return alert("Vul van en naar in.");
-  await fetchJson("/favorieten", {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({van, naar})
-  });
+
+  const favs = getFavs();
+
+  const exists = favs.some(f =>
+    f.van.toLowerCase() === van.toLowerCase() &&
+    f.naar.toLowerCase() === naar.toLowerCase()
+  );
+
+  if (exists) {
+    alert("Deze favoriet bestaat al.");
+    return;
+  }
+
+  favs.push({ van, naar });
+  saveFavs(favs);
   laadFavorieten();
 });
-laadFavorieten();
 
-/* ✅ Toetsenbord weg als je ergens anders tikt */
-function hideKeyboard(){
-  const el = document.activeElement;
-  if (!el) return;
-  const tag = (el.tagName || "").toLowerCase();
-  if (tag === "input" || tag === "textarea" || tag === "select") el.blur();
-}
-document.addEventListener("pointerdown", (e) => {
-  const t = e.target;
-  if (!t.closest("input, textarea, select")) hideKeyboard();
-}, { passive:true });
+laadFavorieten();
 
 /* PWA */
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js");
 }
 </script>
-
 </body>
 </html>
