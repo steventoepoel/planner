@@ -1,4 +1,6 @@
-// server.js (Render-ready: p-limit + rate limiting + caching + prefix fallback + slimme Extreme-B)
+// server.js (Render production)
+// p-limit + rate limiting + caching + prefix fallback + slimme Extreme-B
+
 import express from "express";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
@@ -9,9 +11,12 @@ import rateLimit from "express-rate-limit";
 dotenv.config();
 
 const app = express();
+
+/** ✅ Render / proxies: MOET vóór rate-limit */
+app.set("trust proxy", 1);
+
 const PORT = process.env.PORT || 3000;
 
-app.set("trust proxy", 1);
 app.use(express.json());
 
 /* =========================
@@ -21,7 +26,6 @@ app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "no-referrer");
-  // NB: geen CSP hier om PWA / inline scripts niet te breken
   next();
 });
 
@@ -41,7 +45,7 @@ app.use(
 app.use(
   rateLimit({
     windowMs: 60 * 1000,
-    max: 180,
+    max: 180, // algemeen
     standardHeaders: true,
     legacyHeaders: false,
   })
@@ -49,7 +53,7 @@ app.use(
 
 const heavyLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 40,
+  max: 40, // trips endpoints
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -58,7 +62,7 @@ app.use("/reis-extreme-b", heavyLimiter);
 
 const stationLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 140,
+  max: 140, // autocomplete
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -68,9 +72,7 @@ app.use("/stations", stationLimiter);
    NS API
    ========================= */
 const API_KEY = process.env.NS_API_KEY;
-if (!API_KEY) console.error("❌ NS_API_KEY ontbreekt in environment variables");
-
-const headers = { "Ocp-Apim-Subscription-Key": API_KEY };
+const headers = API_KEY ? { "Ocp-Apim-Subscription-Key": API_KEY } : null;
 
 const EXTREME = {
   minTransferTime: 0,
@@ -85,6 +87,17 @@ function requireApiKey(res) {
   }
   return true;
 }
+
+/* =========================
+   Health (handig voor debug)
+   ========================= */
+app.get("/health", (req, res) => {
+  res.json({
+    ok: true,
+    hasApiKey: Boolean(API_KEY),
+    node: process.version,
+  });
+});
 
 /* =========================
    Concurrency (p-limit)
@@ -185,32 +198,51 @@ app.delete("/favorieten/:index", async (req, res) => {
    - TTL cache
    - prefix fallback
    - in-flight dedupe
-   - Cache-Control
+   - cleanup to prevent memory growth
    ========================= */
-const stationSearchCache = new Map(); // key -> {t,payload}
-const stationInFlight = new Map(); // key -> Promise<payload>
+const stationCache = new Map(); // key -> {t, payload}
+const stationInFlight = new Map(); // key -> Promise
 const STATION_TTL_MS = 30 * 60 * 1000; // 30 min
+const STATION_MAX_KEYS = 2000; // safety cap
 
-function cacheGet(key) {
-  const hit = stationSearchCache.get(key);
+function stationCacheGet(key) {
+  const hit = stationCache.get(key);
   if (!hit) return null;
   if (Date.now() - hit.t > STATION_TTL_MS) {
-    stationSearchCache.delete(key);
+    stationCache.delete(key);
     return null;
   }
   return hit.payload;
 }
-function cacheSet(key, payload) {
-  stationSearchCache.set(key, { t: Date.now(), payload });
+
+function stationCacheSet(key, payload) {
+  stationCache.set(key, { t: Date.now(), payload });
+
+  // safety cap: verwijder oudste entries
+  if (stationCache.size > STATION_MAX_KEYS) {
+    const entries = Array.from(stationCache.entries()).sort((a, b) => a[1].t - b[1].t);
+    const removeCount = stationCache.size - STATION_MAX_KEYS;
+    for (let i = 0; i < removeCount; i++) stationCache.delete(entries[i][0]);
+  }
 }
+
 function bestPrefixCached(key) {
+  // zoek vanaf lang naar kort (min 2 chars)
   for (let i = key.length - 1; i >= 2; i--) {
     const pref = key.slice(0, i);
-    const val = cacheGet(pref);
+    const val = stationCacheGet(pref);
     if (val) return val;
   }
   return null;
 }
+
+// periodieke cleanup (tegen memory groei)
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of stationCache.entries()) {
+    if (now - v.t > STATION_TTL_MS) stationCache.delete(k);
+  }
+}, 10 * 60 * 1000).unref();
 
 async function fetchStationsFromNS(q) {
   const url = `https://gateway.apiportal.ns.nl/reisinformatie-api/api/v2/stations?q=${encodeURIComponent(q)}`;
@@ -222,7 +254,7 @@ async function fetchStationsCached(q) {
   const key = (q || "").trim().toLowerCase();
   if (!key) return [];
 
-  const exact = cacheGet(key);
+  const exact = stationCacheGet(key);
   if (exact) return exact;
 
   if (stationInFlight.has(key)) return stationInFlight.get(key);
@@ -230,7 +262,7 @@ async function fetchStationsCached(q) {
   const p = (async () => {
     try {
       const payload = await fetchStationsFromNS(q);
-      cacheSet(key, payload);
+      stationCacheSet(key, payload);
       return payload;
     } finally {
       stationInFlight.delete(key);
@@ -252,13 +284,14 @@ app.get("/stations", async (req, res) => {
   const key = q.toLowerCase();
 
   try {
-    const exact = cacheGet(key);
+    const exact = stationCacheGet(key);
 
-    // ✅ snelle prefix response (instant gevoel)
+    // ✅ prefix fallback: direct antwoord met oudere prefix resultaten
     if (!exact) {
       const pref = bestPrefixCached(key);
       if (pref) {
         res.json(pref);
+        // op achtergrond echte query ophalen
         fetchStationsCached(q).catch(() => {});
         return;
       }
@@ -346,7 +379,7 @@ function combineOptions(optA, optB) {
   const bDep = Date.parse(optB.depart);
   const transferMin = Math.round((bDep - aArr) / 60000);
 
-  // ✅ nooit negatieve overstap toestaan
+  // ✅ nooit negatieve overstap
   if (!Number.isFinite(transferMin) || transferMin < 0) return null;
 
   let minTransferMin = optA.minTransferMin;
@@ -379,6 +412,7 @@ function optionSignature(o) {
    ========================= */
 app.get("/reis", async (req, res) => {
   if (!requireApiKey(res)) return;
+
   const { van, naar, datetime, extreme } = req.query;
   if (!van || !naar || !datetime) return res.status(400).json({ error: "Parameters ontbreken" });
 
@@ -402,13 +436,10 @@ app.get("/reis", async (req, res) => {
 
 /* =========================
    /reis-extreme-b (SLIMMER)
-   - via’s op frequentie
-   - parallel met p-limit
-   - pruning TOP_A/TOP_B/MAX_TRANSFER
-   - dedupe + sort
    ========================= */
 app.get("/reis-extreme-b", async (req, res) => {
   if (!requireApiKey(res)) return;
+
   const { van, naar, datetime } = req.query;
   if (!van || !naar || !datetime) return res.status(400).json({ error: "Parameters ontbreken" });
 
@@ -420,7 +451,7 @@ app.get("/reis-extreme-b", async (req, res) => {
   const MAX_VIA = 8;
   const TOP_A = 5;
   const TOP_B = 8;
-  const MAX_TRANSFER = 20; // alleen 0..20 min overstap
+  const MAX_TRANSFER = 20; // 0..20 min
   const TARGET = 10;
 
   function scoreOption(o) {
@@ -430,7 +461,6 @@ app.get("/reis-extreme-b", async (req, res) => {
   }
 
   try {
-    // 1) Basis trips (extreme)
     const base = await fetchTrips({
       from: FROM,
       to: TO,
@@ -439,8 +469,6 @@ app.get("/reis-extreme-b", async (req, res) => {
     });
 
     const baseTrips = Array.isArray(base.trips) ? base.trips : [];
-
-    // 2) Baseline opties (directe trips)
     const options = baseTrips.map(tripToOption).filter(Boolean);
 
     if (options.length >= TARGET) {
@@ -448,7 +476,7 @@ app.get("/reis-extreme-b", async (req, res) => {
       return res.json({ options: options.slice(0, TARGET) });
     }
 
-    // 3) Verzamel via-namen + frequentie
+    // via frequentie
     const viaCount = new Map();
     for (const t of baseTrips) {
       const legs = t.legs || [];
@@ -464,22 +492,21 @@ app.get("/reis-extreme-b", async (req, res) => {
       .slice(0, MAX_VIA)
       .map(([nm]) => nm);
 
-    // 4) Resolve via codes parallel + cached station search
+    // resolve via codes (parallel)
     const viaCodeResults = await Promise.all(
       viaNames.map((nm) =>
         limitStations(async () => {
           const q = nm.slice(0, 12);
           const payload = await fetchStationsCached(q);
-          const hit = payload.find(
-            (s) => (s.namen?.lang || "").toLowerCase() === nm.toLowerCase()
-          );
+          const hit = payload.find((s) => (s.namen?.lang || "").toLowerCase() === nm.toLowerCase());
           return hit?.code || null;
         })
       )
     );
+
     const viaCodes = viaCodeResults.filter(Boolean);
 
-    // 5) Generate combos
+    // combos verzamelen
     const best = [];
     function pushBest(o) {
       best.push(o);
@@ -507,7 +534,6 @@ app.get("/reis-extreme-b", async (req, res) => {
             .sort((x, y) => x.durationMin - y.durationMin)
             .slice(0, TOP_A);
 
-          // B calls parallel for each A
           await Promise.all(
             aOpts.map(async (optA) => {
               const bData = await fetchTrips({
@@ -525,11 +551,10 @@ app.get("/reis-extreme-b", async (req, res) => {
                   (Date.parse(optB.depart) - Date.parse(optA.arrive)) / 60000
                 );
 
-                // ✅ filter: nooit negatief, en max overstap
                 if (!Number.isFinite(transferMin) || transferMin < 0 || transferMin > MAX_TRANSFER) continue;
 
-                const c = combineOptions(optA, optB);
-                if (c) pushBest(c);
+                const combo = combineOptions(optA, optB);
+                if (combo) pushBest(combo);
               }
             })
           );
@@ -537,7 +562,7 @@ app.get("/reis-extreme-b", async (req, res) => {
       )
     );
 
-    // 6) Merge + dedup + sort
+    // merge + dedupe + sort
     const all = [...options, ...best].filter(Boolean);
     const seen = new Set();
     const deduped = [];
