@@ -6,7 +6,7 @@
 <title>Toepoel's</title>
 
 <!-- ✅ Versie -->
-<meta name="app-version" content="1.01">
+<meta name="app-version" content="1.02">
 
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#275D63">
@@ -117,6 +117,13 @@ header{
   opacity:0.95;
 }
 
+/* ✅ Verberg "⚡ Altijd Extreem" op mobiel */
+@media (max-width:768px){
+  .headerControls{
+    display:none;
+  }
+}
+
 /* Content */
 .container{
   max-width:1000px;
@@ -173,7 +180,6 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   .brandBlock{ flex-direction:column; align-items:center; gap:12px; }
   .brandBlock img{ width:78px; height:78px; }
   .tagline{ font-size:18px; }
-  .headerControls{ width:100%; justify-content:center; }
   .row{ flex-direction:column; gap:10px; }
   .datetimeRow{ flex-direction:column; }
   .datetimeRow .timeCols{ width:100%; }
@@ -383,7 +389,7 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
 </div>
 
 <div class="footer safe">
-  <div>Aan deze planner kunnen geen rechten aan worden ontleent.</div>
+  <div>Aan deze planner kunnen geen rechten aan worden ontleend.</div>
   <div>Deze planner helpt je alleen om te kijken of je nog sneller kunt reizen.</div>
   <div>Dit lukt niet altijd. 😉</div>
   <div>Versie: <span id="appVersion"></span></div>

@@ -1,4 +1,4 @@
-const CACHE_NAME = "toepoel-planner-v1.01";
+const CACHE_NAME = "toepoel-planner-v1.02";
 
 const FILES_TO_CACHE = [
   "/",
