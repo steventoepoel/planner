@@ -6,7 +6,7 @@
 <title>Toepoel's</title>
 
 <!-- ✅ Versie -->
-<meta name="app-version" content="1.02">
+<meta name="app-version" content="1.03">
 
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#275D63">
@@ -119,9 +119,7 @@ header{
 
 /* ✅ Verberg "⚡ Altijd Extreem" op mobiel */
 @media (max-width:768px){
-  .headerControls{
-    display:none;
-  }
+  .headerControls{ display:none; }
 }
 
 /* Content */
@@ -338,7 +336,6 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
         <div class="tagline">Dé reisplanner met <u>alle</u> overstappen!</div>
       </div>
 
-      <!-- ✅ Modus + theme toggles weg. Altijd Extreem-B + volgt device theme -->
       <div class="headerControls" title="Altijd Extreem-B ingeschakeld">
         ⚡ Altijd Extreem
       </div>
@@ -477,13 +474,27 @@ function normLeg(l){
   return { dep, arr, originName, destName, depTrack, arrTrack, delayMin, product };
 }
 
+/* ✅ Sort legs chronologisch om negatieve overstappen te voorkomen */
+function sortLegsChrono(legs){
+  if (!Array.isArray(legs)) return [];
+  return [...legs].sort((a,b)=>{
+    const ad = Date.parse(normLeg(a).dep || 0);
+    const bd = Date.parse(normLeg(b).dep || 0);
+    return (ad - bd);
+  });
+}
+
+/* ✅ Transfers berekenen (met detectie voor negatieve overstappen) */
 function computeTransfersFromLegs(legs){
   const transfers = [];
   let minTransferMin = null;
+  let hasNegative = false;
 
-  if (!Array.isArray(legs) || legs.length < 2) return { transfers, minTransferMin };
+  const sorted = sortLegsChrono(legs);
+  if (sorted.length < 2) return { transfers, minTransferMin, hasNegative };
 
-  const nlegs = legs.map(normLeg);
+  const nlegs = sorted.map(normLeg);
+
   for (let i=0; i<nlegs.length-1; i++){
     const a = nlegs[i];
     const b = nlegs[i+1];
@@ -494,12 +505,15 @@ function computeTransfersFromLegs(legs){
     if (!isFinite(aT) || !isFinite(bT)) continue;
 
     const m = Math.round((bT - aT)/60000);
-    const station = a.destName || "Overstap";
+    if (m < 0) hasNegative = true;
 
+    const station = a.destName || "Overstap";
     transfers.push({ station, minutes: m });
+
     if (minTransferMin === null || m < minTransferMin) minTransferMin = m;
   }
-  return { transfers, minTransferMin };
+
+  return { transfers, minTransferMin, hasNegative };
 }
 
 function sortByStartTime(arr){
@@ -659,7 +673,9 @@ function renderExpandableTrip(opt){
   const depart = opt.depart;
   const arrive = opt.arrive;
   const durationMin = opt.durationMin;
-  const legs = opt.legs || [];
+
+  /* ✅ Sort legs zodat UI en overstappen kloppen */
+  const legs = sortLegsChrono(opt.legs || []);
   const transfersCount = Math.max(0, legs.length - 1);
 
   const transfersInfo = opt.transfersInfo || computeTransfersFromLegs(legs);
@@ -789,12 +805,22 @@ async function zoekReis(){
       return;
     }
 
-    opts.forEach(o=>{
-      o.transfersInfo = o.transfersInfo || computeTransfersFromLegs(o.legs || []);
-    });
+    /* ✅ Sort legs + recompute transfers + filter negatieve overstappen */
+    const cleaned = opts
+      .map(o=>{
+        o.legs = sortLegsChrono(o.legs || []);
+        o.transfersInfo = computeTransfersFromLegs(o.legs);
+        return o;
+      })
+      .filter(o=> !o.transfersInfo?.hasNegative);
+
+    if (!cleaned.length){
+      resultaat.innerHTML = `<div class="resultCard">Geen geldige opties gevonden.</div>`;
+      return;
+    }
 
     const frag = document.createDocumentFragment();
-    sortByStartTime(opts).forEach(o=>{
+    sortByStartTime(cleaned).forEach(o=>{
       frag.appendChild(renderExpandableTrip(o));
     });
     resultaat.appendChild(frag);
@@ -869,6 +895,18 @@ favBtn.addEventListener("click", async ()=>{
   laadFavorieten();
 });
 laadFavorieten();
+
+/* ✅ Toetsenbord weg als je ergens anders tikt */
+function hideKeyboard(){
+  const el = document.activeElement;
+  if (!el) return;
+  const tag = (el.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") el.blur();
+}
+document.addEventListener("pointerdown", (e) => {
+  const t = e.target;
+  if (!t.closest("input, textarea, select")) hideKeyboard();
+}, { passive:true });
 
 /* PWA */
 if ("serviceWorker" in navigator) {
