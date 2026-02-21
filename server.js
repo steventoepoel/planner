@@ -1,8 +1,9 @@
-// server.js (Render production)
-// p-limit + rate limiting + caching + prefix fallback + slimme Extreme-B + OVapi (bus/tram/metro)
+// server.js (Render production) — v1.08
+// p-limit + rate limiting + caching + prefix fallback + slimme Extreme-B + OV (bus/tram/metro)
+// + searchForArrival support + /reis returns { options } + sw.js no-cache for PWA updates
 
 import dns from "dns";
-dns.setDefaultResultOrder("ipv4first"); // ✅ belangrijk voor Render/IPv6 issues
+dns.setDefaultResultOrder("ipv4first"); // ✅ Render/IPv6 issues
 
 import express from "express";
 import fetch from "node-fetch";
@@ -34,11 +35,24 @@ app.use((req, res, next) => {
 
 /* =========================
    Static files (cache)
+   - LET OP: sw.js NOOIT lang cachen (anders geen update-melding)
    ========================= */
 app.use(
   express.static("public", {
     maxAge: "1h",
     etag: true,
+    setHeaders: (res, path) => {
+      // ✅ Service worker: altijd vers ophalen
+      if (path.endsWith("/sw.js") || path.endsWith("\\sw.js")) {
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+      }
+      // (optioneel) manifest liever kort cachen
+      if (path.endsWith("/manifest.json") || path.endsWith("\\manifest.json")) {
+        res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+      }
+    },
   })
 );
 
@@ -71,6 +85,15 @@ const stationLimiter = rateLimit({
 });
 app.use("/stations", stationLimiter);
 
+/* ✅ OV endpoint limiter */
+const ovLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use("/ov", ovLimiter);
+
 /* =========================
    NS API
    ========================= */
@@ -92,7 +115,7 @@ function requireApiKey(res) {
 }
 
 /* =========================
-   Health
+   Health (handig voor debug)
    ========================= */
 app.get("/health", (req, res) => {
   res.json({
@@ -198,6 +221,10 @@ app.delete("/favorieten/:index", async (req, res) => {
 
 /* =========================
    STATIONS (autocomplete) — FAST
+   - TTL cache
+   - prefix fallback
+   - in-flight dedupe
+   - cleanup to prevent memory growth
    ========================= */
 const stationCache = new Map(); // key -> {t, payload}
 const stationInFlight = new Map(); // key -> Promise
@@ -217,6 +244,7 @@ function stationCacheGet(key) {
 function stationCacheSet(key, payload) {
   stationCache.set(key, { t: Date.now(), payload });
 
+  // safety cap: verwijder oudste entries
   if (stationCache.size > STATION_MAX_KEYS) {
     const entries = Array.from(stationCache.entries()).sort((a, b) => a[1].t - b[1].t);
     const removeCount = stationCache.size - STATION_MAX_KEYS;
@@ -225,6 +253,7 @@ function stationCacheSet(key, payload) {
 }
 
 function bestPrefixCached(key) {
+  // zoek vanaf lang naar kort (min 2 chars)
   for (let i = key.length - 1; i >= 2; i--) {
     const pref = key.slice(0, i);
     const val = stationCacheGet(pref);
@@ -233,6 +262,7 @@ function bestPrefixCached(key) {
   return null;
 }
 
+// periodieke cleanup (tegen memory groei)
 setInterval(() => {
   const now = Date.now();
   for (const [k, v] of stationCache.entries()) {
@@ -276,15 +306,18 @@ app.get("/stations", async (req, res) => {
   if (!q) return res.json([]);
 
   res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+
   const key = q.toLowerCase();
 
   try {
     const exact = stationCacheGet(key);
 
+    // ✅ prefix fallback: direct antwoord met oudere prefix resultaten
     if (!exact) {
       const pref = bestPrefixCached(key);
       if (pref) {
         res.json(pref);
+        // op achtergrond echte query ophalen
         fetchStationsCached(q).catch(() => {});
         return;
       }
@@ -346,8 +379,6 @@ function tripToOption(trip) {
     arrive,
     minTransferMin,
     legs: legs.map((l) => ({
-      origin: l.origin || null,
-      destination: l.destination || null,
       originName: l.origin?.name,
       destName: l.destination?.name,
       dep: l.origin?.plannedDateTime,
@@ -374,6 +405,7 @@ function combineOptions(optA, optB) {
   const bDep = Date.parse(optB.depart);
   const transferMin = Math.round((bDep - aArr) / 60000);
 
+  // ✅ nooit negatieve overstap
   if (!Number.isFinite(transferMin) || transferMin < 0) return null;
 
   let minTransferMin = optA.minTransferMin;
@@ -402,17 +434,20 @@ function optionSignature(o) {
 }
 
 /* =========================
-   /reis (NORMAAL)
+   /reis (NORMAAL) — v1.08
+   - return { options } zodat frontend hetzelfde kan renderen
+   - ondersteunt searchForArrival=true/false
    ========================= */
 app.get("/reis", async (req, res) => {
   if (!requireApiKey(res)) return;
 
-  const { van, naar, datetime, extreme } = req.query;
+  const { van, naar, datetime, searchForArrival } = req.query;
   if (!van || !naar || !datetime) return res.status(400).json({ error: "Parameters ontbreken" });
 
   try {
-    const extra = {};
-    if (extreme === "1") Object.assign(extra, EXTREME);
+    const extra = {
+      ...(searchForArrival !== undefined ? { searchForArrival: String(searchForArrival) } : {}),
+    };
 
     const data = await fetchTrips({
       from: String(van),
@@ -421,7 +456,10 @@ app.get("/reis", async (req, res) => {
       extraParams: extra,
     });
 
-    res.json(data);
+    const trips = Array.isArray(data.trips) ? data.trips : [];
+    const options = trips.map(tripToOption).filter(Boolean);
+
+    res.json({ options });
   } catch (err) {
     console.error("Reis fout:", err.message || err);
     res.status(500).json({ error: "Reis ophalen mislukt" });
@@ -429,22 +467,30 @@ app.get("/reis", async (req, res) => {
 });
 
 /* =========================
-   /reis-extreme-b (SLIMMER)
+   /reis-extreme-b (SLIMMER) — v1.08
+   - ondersteunt searchForArrival=true/false (base/A)
+   - B leg zoekt altijd vanaf arrive-time (depart-based), dus searchForArrival=false
    ========================= */
 app.get("/reis-extreme-b", async (req, res) => {
   if (!requireApiKey(res)) return;
 
-  const { van, naar, datetime } = req.query;
+  const { van, naar, datetime, searchForArrival } = req.query;
   if (!van || !naar || !datetime) return res.status(400).json({ error: "Parameters ontbreken" });
 
   const FROM = String(van);
   const TO = String(naar);
   const DT = String(datetime);
 
+  const baseExtra = {
+    ...EXTREME,
+    ...(searchForArrival !== undefined ? { searchForArrival: String(searchForArrival) } : {}),
+  };
+
+  // Tunables
   const MAX_VIA = 8;
   const TOP_A = 5;
   const TOP_B = 8;
-  const MAX_TRANSFER = 20;
+  const MAX_TRANSFER = 20; // 0..20 min
   const TARGET = 10;
 
   function scoreOption(o) {
@@ -458,7 +504,7 @@ app.get("/reis-extreme-b", async (req, res) => {
       from: FROM,
       to: TO,
       dateTimeISO: DT,
-      extraParams: EXTREME,
+      extraParams: baseExtra,
     });
 
     const baseTrips = Array.isArray(base.trips) ? base.trips : [];
@@ -469,6 +515,7 @@ app.get("/reis-extreme-b", async (req, res) => {
       return res.json({ options: options.slice(0, TARGET) });
     }
 
+    // via frequentie
     const viaCount = new Map();
     for (const t of baseTrips) {
       const legs = t.legs || [];
@@ -484,6 +531,7 @@ app.get("/reis-extreme-b", async (req, res) => {
       .slice(0, MAX_VIA)
       .map(([nm]) => nm);
 
+    // resolve via codes (parallel)
     const viaCodeResults = await Promise.all(
       viaNames.map((nm) =>
         limitStations(async () => {
@@ -497,6 +545,7 @@ app.get("/reis-extreme-b", async (req, res) => {
 
     const viaCodes = viaCodeResults.filter(Boolean);
 
+    // combos verzamelen
     const best = [];
     function pushBest(o) {
       best.push(o);
@@ -509,11 +558,12 @@ app.get("/reis-extreme-b", async (req, res) => {
     await Promise.all(
       viaCodes.map((via) =>
         limitTrips(async () => {
+          // A: FROM -> VIA (respecteer searchForArrival keuze)
           const aData = await fetchTrips({
             from: FROM,
             to: via,
             dateTimeISO: DT,
-            extraParams: EXTREME,
+            extraParams: baseExtra,
           });
 
           const aTrips = Array.isArray(aData.trips) ? aData.trips : [];
@@ -525,11 +575,12 @@ app.get("/reis-extreme-b", async (req, res) => {
 
           await Promise.all(
             aOpts.map(async (optA) => {
+              // B: VIA -> TO zoekt vanaf optA.arrive (dit is logischer als depart-based)
               const bData = await fetchTrips({
                 from: via,
                 to: TO,
                 dateTimeISO: optA.arrive,
-                extraParams: EXTREME,
+                extraParams: { ...EXTREME, searchForArrival: "false" },
               });
 
               const bTrips = Array.isArray(bData.trips) ? bData.trips : [];
@@ -540,7 +591,8 @@ app.get("/reis-extreme-b", async (req, res) => {
                   (Date.parse(optB.depart) - Date.parse(optA.arrive)) / 60000
                 );
 
-                if (!Number.isFinite(transferMin) || transferMin < 0 || transferMin > MAX_TRANSFER) continue;
+                if (!Number.isFinite(transferMin) || transferMin < 0 || transferMin > MAX_TRANSFER)
+                  continue;
 
                 const combo = combineOptions(optA, optB);
                 if (combo) pushBest(combo);
@@ -551,6 +603,7 @@ app.get("/reis-extreme-b", async (req, res) => {
       )
     );
 
+    // merge + dedupe + sort
     const all = [...options, ...best].filter(Boolean);
     const seen = new Set();
     const deduped = [];
@@ -572,28 +625,22 @@ app.get("/reis-extreme-b", async (req, res) => {
 });
 
 /* =========================
-   OVapi
+   OVapi (bus / tram / metro)
+   - HTTPS is kapot (cert), dus fallback naar HTTP
    ========================= */
-const ovLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 220,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use("/ov", ovLimiter);
 
-// jouw haltecodes (Dordrecht Centraal Station perron A = 53600140)
+// stationcode -> tpc(s)
 const STATION_TO_TPC = {
-  ddr: ["53600140"],
-  ddzd: ["53608690"],
-  rtb: ["31001125", "31008134"],
-  rtd: ["31003941", "31001016", "31008000"],
-  gvh: ["32003846"],
-  gvc: ["32002609"],
+  ddr: ["53600140"],     // Dordrecht (busperron A, volgens ovzoeker)
+  ddzd: ["53608690"],    // Dordrecht Zuid
+  rtb: ["31001125"],     // Rotterdam Blaak
+  rtd: ["31003941"],     // Rotterdam Centraal
+  gvh: ["32003846"],     // Den Haag HS
+  gvc: ["32002609"],     // Den Haag Centraal
 };
 
 const ovCache = new Map();
-const OV_TTL_MS = 15 * 1000;
+const OV_TTL_MS = 20000;
 
 function ovCacheGet(key) {
   const hit = ovCache.get(key);
@@ -609,59 +656,58 @@ function ovCacheSet(key, payload) {
 }
 
 async function fetchOvTpcSafe(tpc) {
-  const url = `https://v0.ovapi.nl/tpc/${encodeURIComponent(tpc)}`;
+  const urls = [
+    `https://v0.ovapi.nl/tpc/${encodeURIComponent(tpc)}`, // (momenteel cert kapot)
+    `http://v0.ovapi.nl/tpc/${encodeURIComponent(tpc)}`,  // ✅ fallback
+  ];
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  let lastErr = "onbekend";
+
+  for (const url of urls) {
     try {
       const raw = await fetchJsonStrict(
         url,
         {
           headers: {
             Accept: "application/json",
-            "User-Agent": "toepoels-planner/1.07",
+            "User-Agent": "toepoels-planner/1.08",
           },
         },
         8000
       );
-      return { ok: true, raw };
+      return { ok: true, raw, usedUrl: url };
     } catch (e) {
-      if (attempt === 2) return { ok: false, error: String(e?.message || e) };
+      lastErr = `${url} -> ${String(e?.message || e)}`;
     }
   }
-  return { ok: false, error: "onbekend" };
+
+  return { ok: false, error: lastErr };
 }
 
 function normalizeOvapi(tpc, dataRaw) {
   if (!dataRaw) return [];
+
   const root = dataRaw?.[String(tpc)];
+  if (!root) return [];
+
   const stopName = root?.Stop?.Name || null;
   const passes = root?.Passes ? Object.values(root.Passes) : [];
-  const items = [];
 
+  const items = [];
   for (const p of passes) {
-    const line = p?.LinePublicNumber ?? p?.LineName ?? "";
-    const dest = p?.DestinationName ?? "";
     const planned = p?.TargetDepartureTime ?? p?.PlannedDepartureTime ?? null;
     const expected = p?.ExpectedDepartureTime ?? planned ?? null;
     if (!expected) continue;
 
-    const delayMin = (() => {
-      const a = Date.parse(planned);
-      const b = Date.parse(expected);
-      if (!isFinite(a) || !isFinite(b)) return 0;
-      return Math.max(0, Math.round((b - a) / 60000));
-    })();
-
     items.push({
       tpc: String(tpc),
       stopName,
-      line: String(line),
-      destination: String(dest),
+      line: p?.LinePublicNumber ?? p?.LineName ?? "",
+      destination: p?.DestinationName ?? "",
       plannedTime: planned,
       expectedTime: expected,
-      delayMin,
-      transportType: p?.TransportType || null,
-      operator: p?.OperatorName || null,
+      transportType: p?.TransportType ?? null,
+      operator: p?.OperatorName ?? null,
     });
   }
 
@@ -669,41 +715,43 @@ function normalizeOvapi(tpc, dataRaw) {
   return items;
 }
 
+// GET /ov/by-station?station=ddr
 app.get("/ov/by-station", async (req, res) => {
   const station = String(req.query.station || "").trim().toLowerCase();
   const tpcs = STATION_TO_TPC[station];
 
   if (!tpcs) return res.status(404).json({ error: "Station niet in OV mapping" });
 
-  const key = `station:${station}`;
+  const key = `ov:${station}`;
   const cached = ovCacheGet(key);
   if (cached) return res.json(cached);
 
-  const settled = await Promise.all(
+  const perStop = await Promise.all(
     tpcs.map(async (tpc) => {
       const r = await fetchOvTpcSafe(tpc);
       if (!r.ok) {
-        return { tpc: String(tpc), stopName: null, passCount: 0, departures: [], error: r.error };
+        return { tpc: String(tpc), stopName: null, passCount: 0, departures: [], usedUrl: null, error: r.error };
       }
+
       const raw = r.raw;
       const root = raw?.[String(tpc)];
       const stopName = root?.Stop?.Name || null;
       const passCount = root?.Passes ? Object.keys(root.Passes).length : 0;
+
       const deps = normalizeOvapi(tpc, raw);
-      return { tpc: String(tpc), stopName, passCount, departures: deps, error: null };
+      return { tpc: String(tpc), stopName, passCount, departures: deps, usedUrl: r.usedUrl, error: null };
     })
   );
 
-  const merged = settled
-    .map((x) => x.departures || [])
-    .flat()
+  const merged = perStop
+    .flatMap((x) => x.departures || [])
     .filter(Boolean)
     .sort((a, b) => Date.parse(a.expectedTime) - Date.parse(b.expectedTime));
 
   const payload = {
     station,
     tpcs,
-    perStop: settled,
+    perStop,
     departures: merged.slice(0, 18),
   };
 

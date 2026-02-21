@@ -1,58 +1,58 @@
-// sw.js — Toepoel's Planner (v1.03+)
-// Belangrijkste doel: iPhone/Chrome niet “vast” laten zitten op een oude versie.
+// sw.js — Toepoel's Planner (v1.08)
+// Doel: nooit “vast” blijven zitten op oude versies (iOS/Chrome)
 // Strategie:
-// - HTML (/) en /index.html: altijd vers ophalen (network-first)
-// - Static assets: cache-first (sneller), maar wel met nieuwe cache versie
-// - Oude caches opruimen bij activate
-// - skipWaiting + clientsClaim zodat updates sneller “pakken”
+// - HTML pagina’s: network-first (altijd nieuwste)
+// - API: nooit cachen (server doet caching/rate limiting)
+// - Static assets: stale-while-revalidate (snel + stil updaten)
+// - Oude caches opruimen
+// - skipWaiting + clients.claim voor snelle updates
 
-const VERSION = "1.06"; // <-- verhoog dit bij elke release
-const CACHE_STATIC = `toepoel-static-${VERSION}`;
+const VERSION = "1.08";
+const CACHE_STATIC  = `toepoel-static-${VERSION}`;
 const CACHE_RUNTIME = `toepoel-runtime-${VERSION}`;
 
-// Precache: alleen echt noodzakelijke dingen
+// Precache: essentials + SEO files + share image
 const PRECACHE = [
   "/",
   "/index.html",
+  "/over.html",
   "/manifest.json",
+  "/robots.txt",
+  "/sitemap.xml",
   "/logo-192.png",
   "/logo-512.png",
+  "/toepoels_planner_optimized.webp"
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    (async () => {
-      const cache = await caches.open(CACHE_STATIC);
-      await cache.addAll(PRECACHE);
-      // Forceer nieuwe SW om actief te worden
-      await self.skipWaiting();
-    })()
-  );
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_STATIC);
+    await cache.addAll(PRECACHE);
+    // nieuwe SW zo snel mogelijk actief
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    (async () => {
-      // claim clients meteen (zodat update sneller live is)
-      await self.clients.claim();
+  event.waitUntil((async () => {
+    await self.clients.claim();
 
-      // oude caches weggooien
-      const keys = await caches.keys();
-      await Promise.all(
-        keys.map((k) => {
-          if (k !== CACHE_STATIC && k !== CACHE_RUNTIME) return caches.delete(k);
-        })
-      );
-    })()
-  );
+    // oude caches weggooien
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => {
+      if (k !== CACHE_STATIC && k !== CACHE_RUNTIME) return caches.delete(k);
+    }));
+  })());
 });
 
 function isHTMLRequest(request) {
   const url = new URL(request.url);
+
   if (request.mode === "navigate") return true;
-  // direct index.html
-  if (url.pathname === "/" || url.pathname === "/index.html") return true;
-  // accept header contains text/html
+
+  // direct html routes
+  if (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/over.html") return true;
+
   const accept = request.headers.get("accept") || "";
   return accept.includes("text/html");
 }
@@ -63,59 +63,68 @@ function isAPIRequest(request) {
     url.pathname.startsWith("/stations") ||
     url.pathname.startsWith("/reis") ||
     url.pathname.startsWith("/reis-extreme-b") ||
-    url.pathname.startsWith("/favorieten")
+    url.pathname.startsWith("/favorieten") ||
+    url.pathname.startsWith("/ov")
   );
+}
+
+// Network-first voor HTML (altijd nieuwste)
+async function handleHTML(req) {
+  try {
+    const fresh = await fetch(req, { cache: "no-store" });
+    const cache = await caches.open(CACHE_RUNTIME);
+    cache.put(req, fresh.clone());
+    return fresh;
+  } catch {
+    const cached = await caches.match(req);
+    return cached || caches.match("/index.html");
+  }
+}
+
+// Stale-while-revalidate voor static assets
+async function handleStatic(req) {
+  const cached = await caches.match(req);
+  const fetchPromise = fetch(req).then(async (fresh) => {
+    if (fresh && fresh.ok) {
+      const cache = await caches.open(CACHE_STATIC);
+      cache.put(req, fresh.clone());
+    }
+    return fresh;
+  }).catch(() => null);
+
+  // als er cache is: direct tonen, ondertussen updaten
+  if (cached) {
+    fetchPromise.catch(() => {});
+    return cached;
+  }
+
+  // geen cache: wacht op netwerk
+  const fresh = await fetchPromise;
+  return fresh || cached;
 }
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
 
-  // Alleen GET requests cachen
   if (req.method !== "GET") return;
 
-  // 1) HTML: network-first (zodat je versie altijd update)
+  // HTML: network-first
   if (isHTMLRequest(req)) {
-    event.respondWith(
-      (async () => {
-        try {
-          const fresh = await fetch(req, { cache: "no-store" });
-          const cache = await caches.open(CACHE_RUNTIME);
-          cache.put(req, fresh.clone());
-          return fresh;
-        } catch {
-          const cached = await caches.match(req);
-          return cached || caches.match("/index.html");
-        }
-      })()
-    );
+    event.respondWith(handleHTML(req));
     return;
   }
 
-  // 2) API requests: nooit cachen via SW (server-side caching doet dit al)
+  // API: nooit cachen via SW
   if (isAPIRequest(req)) {
     event.respondWith(fetch(req));
     return;
   }
 
-  // 3) Overige static assets: cache-first (sneller), met runtime update
-  event.respondWith(
-    (async () => {
-      const cached = await caches.match(req);
-      if (cached) return cached;
-
-      const fresh = await fetch(req);
-      // alleen succesvolle responses cachen
-      if (fresh && fresh.ok) {
-        const cache = await caches.open(CACHE_STATIC);
-        cache.put(req, fresh.clone());
-      }
-      return fresh;
-    })()
-  );
+  // static: stale-while-revalidate
+  event.respondWith(handleStatic(req));
 });
 
-// Optioneel: vanuit de pagina een update forceren:
-// navigator.serviceWorker.controller?.postMessage({type:"SKIP_WAITING"})
+// Update forceren vanuit pagina (banner-knop)
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") {
     self.skipWaiting();

@@ -3,12 +3,49 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>Toepoel's</title>
 
-<meta name="app-version" content="1.07" />
+<!-- ✅ SEO basis -->
+<title>Toepoel's Reisplanner – Normale & Extra Korte Overstappen</title>
+<meta name="description" content="Snelle treinplanner met normale én extra korte overstappen. Bekijk minimale overstaptijd, vergelijk reistijden en check live OV-aansluitingen." />
+<link rel="canonical" href="https://www.toepoels.nl/" />
+<meta name="robots" content="index,follow" />
+
+<!-- ✅ Open Graph / social share -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Toepoel's Reisplanner" />
+<meta property="og:title" content="Toepoel's Reisplanner" />
+<meta property="og:description" content="Normale én extra korte overstappen. Bekijk minimale overstaptijd, vergelijk reistijden en check live OV-aansluitingen." />
+<meta property="og:url" content="https://www.toepoels.nl/" />
+<meta property="og:image" content="https://www.toepoels.nl/toepoels_planner_optimized.webp" />
+<meta property="og:image:type" content="image/webp" />
+
+<!-- ✅ Twitter card -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Toepoel's Reisplanner" />
+<meta name="twitter:description" content="Normale én extra korte overstappen. Bekijk minimale overstaptijd, vergelijk reistijden en check live OV-aansluitingen." />
+<meta name="twitter:image" content="https://www.toepoels.nl/toepoels_planner_optimized.webp" />
+
+<!-- ✅ Structured data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Toepoel's Reisplanner",
+  "url": "https://www.toepoels.nl/",
+  "applicationCategory": "TravelApplication",
+  "operatingSystem": "All",
+  "description": "Snelle treinplanner met normale en extra korte overstappen, minimale overstaptijd en live OV-aansluitingen.",
+  "image": "https://www.toepoels.nl/toepoels_planner_optimized.webp"
+}
+</script>
+
+<!-- ✅ Versie -->
+<meta name="app-version" content="1.08" />
 
 <link rel="manifest" href="/manifest.json" />
 <meta name="theme-color" content="#275D63" />
+
+<!-- Icons (PWA icons blijven PNG) -->
 <link rel="icon" type="image/png" href="/logo-192.png" />
 <link rel="apple-touch-icon" href="/logo-192.png" />
 
@@ -36,6 +73,7 @@
   --warnText:#1a1a1a;
 }
 
+/* ✅ Volgt device theme automatisch */
 @media (prefers-color-scheme: dark){
   :root{
     --bg:#0f1415;
@@ -66,11 +104,13 @@ body{
   padding-bottom: max(14px, env(safe-area-inset-bottom));
 }
 
+/* Safe area */
 .safe{
   padding-left: max(14px, env(safe-area-inset-left));
   padding-right:max(14px, env(safe-area-inset-right));
 }
 
+/* Header */
 header{
   background:var(--brand);
   color:var(--brandText);
@@ -84,12 +124,12 @@ header{
   max-width:1000px;
   margin:auto;
   flex-wrap:wrap;
-  gap:20px;
+  gap:16px;
 }
 .brandBlock{
   display:flex;
   align-items:center;
-  gap:18px;
+  gap:14px;
 }
 .brandBlock img{
   width:92px;
@@ -97,26 +137,57 @@ header{
   border-radius:22px;
   background:rgba(255,255,255,0.15);
   padding:10px;
+  object-fit:contain;
 }
-.tagline{
+
+/* Mode toggle (naast logo) */
+.modeWrap{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.modeLabel{
   font-weight:900;
-  font-size:26px;
-  line-height:1.15;
+  font-size:13px;
+  opacity:.95;
 }
-.tagline u{ text-decoration-thickness:3px; text-underline-offset:4px; }
+.segment{
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+.segmentBtn{
+  width:auto;
+  padding:10px 12px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,0.35);
+  background:rgba(255,255,255,0.12);
+  color:#fff;
+  font-weight:900;
+  font-size:13px;
+  cursor:pointer;
+  user-select:none;
+}
+.segmentBtn.active{
+  background:#fff;
+  color:var(--brand);
+  border-color:#fff;
+}
 
 .headerControls{
   display:flex;
-  gap:14px;
+  gap:12px;
   align-items:center;
   font-weight:900;
   opacity:0.95;
 }
 
+/* Hide right header text on mobile */
 @media (max-width:768px){
   .headerControls{ display:none; }
 }
 
+/* Content */
 .container{
   max-width:1000px;
   margin:auto;
@@ -156,6 +227,7 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
 
 .small{ color:var(--muted); font-size:13px; line-height:1.35; }
 
+/* Datum/tijd layout */
 .datetimeRow{
   display:flex;
   gap:12px;
@@ -170,12 +242,12 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   .headerRow{ flex-direction:column; align-items:center; text-align:center; }
   .brandBlock{ flex-direction:column; align-items:center; gap:12px; }
   .brandBlock img{ width:78px; height:78px; }
-  .tagline{ font-size:18px; }
   .row{ flex-direction:column; gap:10px; }
   .datetimeRow{ flex-direction:column; }
   .datetimeRow .timeCols{ width:100%; }
 }
 
+/* Result cards (clickable + expand) */
 .resultCard{
   background:var(--card);
   border:1px solid var(--border);
@@ -286,6 +358,7 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
 
 /* Favorieten */
 .favBtn{ background:var(--fav); color:var(--favText); }
+
 .favlist .favitem{
   display:flex;
   justify-content:space-between;
@@ -296,7 +369,48 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   border:1px solid var(--border);
   margin-top:8px;
 }
-.favlist .favitem span{ cursor:pointer; font-weight:900; }
+.favLeft{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+}
+.favGrip{
+  font-weight:900;
+  opacity:.65;
+  cursor:grab;
+  user-select:none;
+  padding:6px 6px;
+  border-radius:10px;
+  border:1px dashed var(--border);
+}
+.favName{
+  cursor:pointer;
+  font-weight:900;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  max-width: 62vw;
+}
+@media (min-width: 769px){
+  .favName{ max-width: 520px; }
+}
+
+.favRight{
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+
+.favMove{
+  width:auto;
+  padding:8px 10px;
+  border-radius:12px;
+  background:var(--chip);
+  border:1px solid var(--border);
+  color:var(--text);
+  font-weight:900;
+}
 .favDel{
   width:auto;
   padding:8px 12px;
@@ -307,21 +421,20 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   font-weight:900;
 }
 
-/* Inline OV button */
-.ovInlineBtn{
+/* OV inline (arrival-only) */
+.ovBtn{
   width:auto;
   padding:6px 10px;
-  border-radius:10px;
-  border:1px solid var(--border);
+  border-radius:12px;
   background:var(--chip);
+  border:1px solid var(--border);
   color:var(--text);
   font-weight:900;
   font-size:12px;
   margin-left:8px;
-  cursor:pointer;
 }
+.ovBtn:hover{ cursor:pointer; }
 
-/* Inline OV panel (onder de regel) */
 .ovPanel{
   margin-top:10px;
   border:1px solid var(--border);
@@ -337,15 +450,58 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   justify-content:space-between;
   gap:10px;
   padding:8px 10px;
-  border-radius:10px;
+  border-radius:12px;
   border:1px solid var(--border);
   margin-top:8px;
+  align-items:center;
 }
 .ovLeft{ font-weight:900; white-space:nowrap; }
 .ovMid{ color:var(--muted); font-weight:800; min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .ovRight{ font-weight:900; white-space:nowrap; }
 .ovDelay{ color:var(--bad); font-weight:900; margin-left:6px; }
 
+.ovTransfer{
+  font-size:12px;
+  font-weight:900;
+  margin-left:10px;
+  padding:4px 8px;
+  border-radius:999px;
+  background:var(--chip);
+  border:1px solid var(--border);
+}
+.ovTransfer.good{ color:var(--good); }
+.ovTransfer.ok{ color:var(--ok); }
+.ovTransfer.bad{ color:var(--bad); }
+
+/* Update banner */
+.updateBanner{
+  position:fixed;
+  left:14px;
+  right:14px;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+  display:none;
+  z-index:9999;
+}
+.updateBanner .top{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:center;
+}
+.updateBanner b{ font-weight:900; }
+.updateBanner button{
+  width:auto;
+  margin-top:0;
+  padding:10px 12px;
+  border-radius:12px;
+}
+
+/* Footer */
 .footer{
   max-width:1000px;
   margin:20px auto;
@@ -353,6 +509,7 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   color:var(--muted);
   text-align:center;
 }
+.footer a{ color:var(--muted); font-weight:900; }
 </style>
 </head>
 
@@ -361,11 +518,22 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   <div class="safe">
     <div class="headerRow">
       <div class="brandBlock">
-        <img src="/logo-192.png" alt="Logo">
-        <div class="tagline">Dé reisplanner met <u>alle</u> overstappen!</div>
+        <!-- ✅ nieuw logo -->
+        <img src="/toepoels_planner_optimized.webp" alt="Toepoel's Reisplanner logo">
+
+        <!-- ✅ toggle naast logo -->
+        <div class="modeWrap">
+          <div class="modeLabel">Modus</div>
+          <div class="segment" role="group" aria-label="Kies modus">
+            <button id="modeNormal" class="segmentBtn" type="button">Normale overstappen</button>
+            <button id="modeExtreme" class="segmentBtn active" type="button">Extra korte overstappen</button>
+          </div>
+        </div>
       </div>
-      <div class="headerControls" title="Altijd Extreem-B ingeschakeld">
-        ⚡ Altijd Extreem
+
+      <!-- desktop only -->
+      <div class="headerControls" title="Standaard: Extra korte overstappen">
+        ⚡ Extra korte overstappen
       </div>
     </div>
   </div>
@@ -374,12 +542,14 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
 <div class="container safe">
   <div class="card">
     <label>Van</label>
-    <input id="van" list="stationsVan" placeholder="Typ station (kies uit lijst)" autocomplete="off">
+    <input id="van" list="stationsVan" placeholder="Typ station (min. 2 letters)" autocomplete="off">
     <datalist id="stationsVan"></datalist>
+    <div class="small" id="vanHint" style="margin-top:6px;"></div>
 
     <label>Naar</label>
-    <input id="naar" list="stationsNaar" placeholder="Typ station (kies uit lijst)" autocomplete="off">
+    <input id="naar" list="stationsNaar" placeholder="Typ station (min. 2 letters)" autocomplete="off">
     <datalist id="stationsNaar"></datalist>
+    <div class="small" id="naarHint" style="margin-top:6px;"></div>
 
     <label>Datum & tijd</label>
     <div class="datetimeRow">
@@ -391,6 +561,14 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
         <select id="minuteSelect" aria-label="Minuut"></select>
       </div>
     </div>
+
+    <!-- ✅ vertrek / aankomst keuze -->
+    <label>Zoek op</label>
+    <select id="searchType">
+      <option value="depart" selected>Vertrektijd</option>
+      <option value="arrive">Aankomsttijd</option>
+    </select>
+    <div class="small">Bij aankomsttijd zoek je reizen die vóór deze tijd aankomen.</div>
 
     <div class="row">
       <button id="wisselBtn" type="button" style="background:#6b7b7d;">⇄ Wissel</button>
@@ -406,25 +584,77 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
 
   <div class="card favlist">
     <b>Favoriete reizen</b>
+    <div class="small" style="margin-top:6px;">Tip: sleep met ⠿ om te sorteren. (Of gebruik ▲▼)</div>
     <div id="favorieten"></div>
   </div>
 
   <div id="resultaat"></div>
 </div>
 
+<!-- ✅ update melding -->
+<div class="updateBanner safe" id="updateBanner" role="status" aria-live="polite">
+  <div class="top">
+    <div>
+      <b>Nieuwe versie beschikbaar</b><br>
+      <span class="small">Klik om te herladen.</span>
+    </div>
+    <button id="reloadBtn" type="button">Herladen</button>
+  </div>
+</div>
+
 <div class="footer safe">
   <div>Aan deze planner kunnen geen rechten aan worden ontleend.</div>
   <div>Deze planner helpt je alleen om te kijken of je nog sneller kunt reizen.</div>
   <div>Dit lukt niet altijd. 😉</div>
-  <div>Versie: <span id="appVersion"></span></div>
+  <div style="margin-top:6px;">
+    <a href="/over.html">Uitleg / Over</a>
+  </div>
+  <div style="margin-top:6px;">Versie: <span id="appVersion"></span></div>
 </div>
 
 <script>
-/* VERSION */
+/* =========================
+   VERSION + STORAGE MIGRATIE (v1.08)
+   ========================= */
 const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content || "onbekend";
 document.getElementById("appVersion").textContent = APP_VERSION;
 
-/* helpers */
+/* storage schema */
+const STORAGE_SCHEMA_KEY = "planner_storage_schema";
+const STORAGE_SCHEMA_CURRENT = 2; // v2 = favorieten met id + order + uitbreidbaar
+
+function migrateStorageIfNeeded(){
+  const raw = localStorage.getItem(STORAGE_SCHEMA_KEY);
+  const current = Number(raw || 0);
+
+  if (!current){
+    // v1.07: planner_favorieten_v1 = [{van,naar}]
+    const oldFavKey = "planner_favorieten_v1";
+    const newFavKey = "planner_favorieten_v2";
+
+    if (!localStorage.getItem(newFavKey) && localStorage.getItem(oldFavKey)){
+      try{
+        const old = JSON.parse(localStorage.getItem(oldFavKey) || "[]");
+        const mapped = Array.isArray(old) ? old.map((f, idx)=>({
+          id: String(Date.now()) + "_" + idx,
+          van: String(f?.van || "").trim(),
+          naar: String(f?.naar || "").trim()
+        })).filter(x=>x.van && x.naar) : [];
+        localStorage.setItem(newFavKey, JSON.stringify(mapped));
+      } catch {}
+    }
+
+    localStorage.setItem(STORAGE_SCHEMA_KEY, String(STORAGE_SCHEMA_CURRENT));
+    return;
+  }
+
+  if (current < STORAGE_SCHEMA_CURRENT){
+    localStorage.setItem(STORAGE_SCHEMA_KEY, String(STORAGE_SCHEMA_CURRENT));
+  }
+}
+migrateStorageIfNeeded();
+
+/* ------------ helpers ------------ */
 function pad2(n){ return String(n).padStart(2,"0"); }
 function roundTo5Min(d){
   const x = new Date(d);
@@ -443,8 +673,6 @@ function fmtTime(iso){
 }
 function humanizeError(err){
   const msg = String(err || "");
-  if (msg.includes("Vertrek- en aankomststation mogen niet hetzelfde zijn"))
-    return "⚠️ Je hebt hetzelfde station gekozen bij vertrek en aankomst.";
   if (!navigator.onLine) return "Je bent offline. Probeer later opnieuw.";
   if (msg.includes("HTTP 401") || msg.includes("HTTP 403")) return "NS API key werkt niet (toegang geweigerd).";
   if (msg.includes("HTTP 500") || msg.includes("HTTP 502") || msg.includes("HTTP 503")) return "NS API is tijdelijk niet bereikbaar.";
@@ -477,7 +705,6 @@ function transferClass(min){
   if (min < 3) return "ok";
   return "good";
 }
-function normName(x){ return (x||"").trim().toLowerCase(); }
 
 /* Normalize leg */
 function normLeg(l){
@@ -486,9 +713,6 @@ function normLeg(l){
 
   const originName = l?.originName || l?.origin?.name || null;
   const destName   = l?.destName   || l?.destination?.name || null;
-
-  const originCode = l?.originCode || l?.origin?.stationCode || l?.origin?.code || null;
-  const destCode   = l?.destCode   || l?.destination?.stationCode || l?.destination?.code || null;
 
   const depTrack = l?.depTrack ?? l?.origin?.plannedTrack ?? "?";
   const arrTrack = l?.arrTrack ?? l?.destination?.plannedTrack ?? "?";
@@ -502,7 +726,7 @@ function normLeg(l){
     l?.product?.categoryName ||
     "Trein";
 
-  return { dep, arr, originName, destName, originCode, destCode, depTrack, arrTrack, delayMin, product };
+  return { dep, arr, originName, destName, depTrack, arrTrack, delayMin, product };
 }
 
 function computeTransfersFromLegs(legs){
@@ -523,6 +747,7 @@ function computeTransfersFromLegs(legs){
 
     const m = Math.round((bT - aT)/60000);
     const station = a.destName || "Overstap";
+
     if (m < 0) continue;
 
     transfers.push({ station, minutes: m });
@@ -535,10 +760,15 @@ function sortByStartTime(arr){
   return arr.sort((a,b)=> (+new Date(a.depart)) - (+new Date(b.depart)));
 }
 
-/* state keys */
-const LS = { van:"last_van", naar:"last_naar" };
+/* ------------ state keys ------------ */
+const LS = {
+  van:"last_van",
+  naar:"last_naar",
+  mode:"planner_mode",            // "extreme" | "normal"
+  searchType:"planner_searchType" // "depart" | "arrive"
+};
 
-/* elements */
+/* ------------ elements ------------ */
 const vanInput = document.getElementById("van");
 const naarInput = document.getElementById("naar");
 const stationsVan = document.getElementById("stationsVan");
@@ -552,8 +782,13 @@ const favBtn = document.getElementById("favBtn");
 const favDiv = document.getElementById("favorieten");
 const resultaat = document.getElementById("resultaat");
 const humanErrorEl = document.getElementById("humanError");
+const vanHint = document.getElementById("vanHint");
+const naarHint = document.getElementById("naarHint");
+const searchTypeEl = document.getElementById("searchType");
+const modeNormalBtn = document.getElementById("modeNormal");
+const modeExtremeBtn = document.getElementById("modeExtreme");
 
-/* keyboard weg (mobile) */
+/* ✅ keyboard weg als je ergens tikt (mobile) */
 function dismissKeyboard(){ document.activeElement?.blur?.(); }
 document.addEventListener("touchstart", (e) => {
   const t = e.target;
@@ -566,13 +801,13 @@ document.addEventListener("click", (e) => {
   dismissKeyboard();
 });
 
-/* date picker */
+/* date fully clickable */
 dateInput.addEventListener("click", ()=>{
   if (dateInput.showPicker) dateInput.showPicker();
   else dateInput.focus();
 });
 
-/* time selects */
+/* fill time selects */
 for(let h=0; h<24; h++){
   const o=document.createElement("option");
   o.value=pad2(h); o.textContent=pad2(h);
@@ -588,11 +823,15 @@ for(let m=0; m<60; m+=5){
 vanInput.value = localStorage.getItem(LS.van) || "";
 naarInput.value = localStorage.getItem(LS.naar) || "";
 
-/* start time = now */
+/* ✅ Datum/tijd bij start altijd NU */
 const now = roundTo5Min(new Date());
 dateInput.value = localISODate(now);
 hourSelect.value = pad2(now.getHours());
 minuteSelect.value = pad2(now.getMinutes());
+
+/* search type restore */
+searchTypeEl.value = localStorage.getItem(LS.searchType) || "depart";
+searchTypeEl.addEventListener("change", ()=> localStorage.setItem(LS.searchType, searchTypeEl.value));
 
 function persistStations(){
   localStorage.setItem(LS.van, vanInput.value);
@@ -603,6 +842,7 @@ function persistStations(){
   naarInput.addEventListener(evt, persistStations);
 });
 
+/* click-to-clear stations */
 function clearOnClick(el, key){
   el.addEventListener("click", ()=>{
     if (el.value.trim()) {
@@ -614,7 +854,22 @@ function clearOnClick(el, key){
 clearOnClick(vanInput, LS.van);
 clearOnClick(naarInput, LS.naar);
 
-/* autocomplete */
+/* ------------ MODE (standaard extreme) ------------ */
+function setMode(mode){
+  const m = (mode === "normal") ? "normal" : "extreme";
+  localStorage.setItem(LS.mode, m);
+
+  modeNormalBtn.classList.toggle("active", m === "normal");
+  modeExtremeBtn.classList.toggle("active", m === "extreme");
+
+  const hc = document.querySelector(".headerControls");
+  if (hc) hc.textContent = (m === "extreme") ? "⚡ Extra korte overstappen" : "✅ Normale overstappen";
+}
+setMode(localStorage.getItem(LS.mode) || "extreme");
+modeNormalBtn.addEventListener("click", ()=> setMode("normal"));
+modeExtremeBtn.addEventListener("click", ()=> setMode("extreme"));
+
+/* ------------ autocomplete (sneller) ------------ */
 let vanList = [];
 let naarList = [];
 
@@ -622,11 +877,25 @@ const stationCache = new Map();
 let stationAbortVan = null;
 let stationAbortNaar = null;
 
+function normName(x){ return (x||"").trim().toLowerCase(); }
+
+function setHint(which, text){
+  if (which === "van") vanHint.textContent = text || "";
+  if (which === "naar") naarHint.textContent = text || "";
+}
+
 async function loadStations(q, listEl, store, which){
   const query = (q || "").trim();
-  if (query.length < 1) return;
+  if (query.length < 2) {
+    listEl.innerHTML = "";
+    store.length = 0;
+    setHint(which, query.length ? "Typ minimaal 2 letters voor suggesties." : "");
+    return;
+  }
 
-  const key = query.toLowerCase();
+  setHint(which, "");
+
+  const key = (which + ":" + query.toLowerCase());
   if (stationCache.has(key)){
     const data = stationCache.get(key) || [];
     listEl.innerHTML = "";
@@ -660,12 +929,16 @@ async function loadStations(q, listEl, store, which){
     listEl.appendChild(opt);
     store.push(s);
   });
+
+  if (!store.length){
+    setHint(which, "Geen stations gevonden. Controleer spelling.");
+  }
 }
 
 vanInput.addEventListener("input", debounce(()=>loadStations(vanInput.value, stationsVan, vanList, "van"), 200));
 naarInput.addEventListener("input", debounce(()=>loadStations(naarInput.value, stationsNaar, naarList, "naar"), 200));
 
-async function resolveCode(name, store){
+async function resolveCode(name, store, which){
   const wanted = normName(name);
 
   const hit = store.find(s=> normName(s.namen.lang) === wanted);
@@ -676,41 +949,73 @@ async function resolveCode(name, store){
     if (ex) return ex.code;
   }
 
+  if (String(name||"").trim().length < 2){
+    setHint(which, "Typ minimaal 2 letters en kies een suggestie.");
+    return null;
+  }
+
   const data = await fetchJson(`/stations?q=${encodeURIComponent(name)}`);
   const exact = (data||[]).find(s=> normName(s.namen.lang) === wanted);
-  return exact ? exact.code : null;
+
+  if (!exact){
+    setHint(which, "Kies een station uit de lijst (klik op een suggestie).");
+    return null;
+  }
+  return exact.code;
 }
+
+function validateStationInput(el, store, which){
+  const val = el.value.trim();
+  if (!val) { setHint(which, ""); return; }
+  const wanted = normName(val);
+  const exactInStore = store.some(s=> normName(s.namen.lang) === wanted);
+  if (!exactInStore){
+    setHint(which, "Kies een station uit de lijst (klik op een suggestie).");
+  } else {
+    setHint(which, "");
+  }
+}
+vanInput.addEventListener("blur", ()=>validateStationInput(vanInput, vanList, "van"));
+naarInput.addEventListener("blur", ()=>validateStationInput(naarInput, naarList, "naar"));
 
 function buildDateTime(){
   return `${dateInput.value}T${hourSelect.value}:${minuteSelect.value}`;
 }
 
 /* =========================
-   Inline OV (v1.07)
+   OV helpers (arrival-only)
    ========================= */
-const OV_STATIONS = new Set(["ddr","ddzd","rtb","rtd","gvh","gvc"]);
-const OV_NAME_TO_CODE = new Map([
+const OV_CODE_BY_NAME = new Map([
   ["dordrecht", "ddr"],
   ["dordrecht zuid", "ddzd"],
   ["rotterdam blaak", "rtb"],
   ["rotterdam centraal", "rtd"],
   ["den haag hs", "gvh"],
-  ["den haag centraal", "gvc"],
+  ["den haag centraal", "gvc"]
 ]);
 
-function iconForType(t){
-  const x = String(t || "").toUpperCase();
-  if (x.includes("METRO")) return "🚇";
-  if (x.includes("TRAM")) return "🚋";
-  return "🚌";
-}
 function fmtHHMM(iso){
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
   return d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
 }
 
-function renderInlineDepartures(panelEl, title, data){
+function classifyOvTransfer(min){
+  if (!Number.isFinite(min)) return "";
+  if (min < 3) return "bad";
+  if (min < 6) return "ok";
+  return "good";
+}
+
+function ovIcon(type){
+  const t = String(type || "").toUpperCase();
+  if (t.includes("METRO")) return "🚇";
+  if (t.includes("TRAM")) return "🚋";
+  return "🚌";
+}
+
+/* Render OV list with transfer time; hide negative + max 30 min */
+function renderOvPanel(panelEl, title, ovData, trainArrIso){
   panelEl.innerHTML = "";
 
   const head = document.createElement("div");
@@ -718,27 +1023,29 @@ function renderInlineDepartures(panelEl, title, data){
   head.textContent = title;
   panelEl.appendChild(head);
 
-  const deps = data?.departures || [];
-  if (!deps.length){
-    const dbg = (data?.perStop || [])
-      .map(x => `${x.tpc} (${x.stopName || "?"}) passes=${x.passCount}`)
-      .join(" • ");
+  const trainArrT = Date.parse(trainArrIso || "");
+  const deps = Array.isArray(ovData?.departures) ? ovData.departures : [];
 
-    const msg = document.createElement("div");
-    msg.className = "small";
-    msg.style.marginTop = "6px";
-    msg.innerHTML = `Geen live vertrektijden gevonden (of tijdelijk niet beschikbaar).<br><span style="opacity:0.9;">Debug: ${dbg || "—"}</span>`;
-    panelEl.appendChild(msg);
-    return;
-  }
+  let shown = 0;
 
-  deps.slice(0, 10).forEach(d => {
+  deps.slice(0, 30).forEach(d => {
+    const depIso = d.expectedTime || d.plannedTime;
+    const depT = Date.parse(depIso || "");
+    if (!isFinite(depT) || !isFinite(trainArrT)) return;
+
+    const transferMin = Math.round((depT - trainArrT) / 60000);
+
+    if (transferMin < 0) return;
+    if (transferMin > 30) return;
+
+    shown++;
+
     const row = document.createElement("div");
     row.className = "ovItem";
 
     const left = document.createElement("div");
     left.className = "ovLeft";
-    left.textContent = `${iconForType(d.transportType)} ${d.line || ""}`.trim();
+    left.textContent = `${ovIcon(d.transportType)} ${d.line || ""}`.trim();
 
     const mid = document.createElement("div");
     mid.className = "ovMid";
@@ -746,37 +1053,53 @@ function renderInlineDepartures(panelEl, title, data){
 
     const right = document.createElement("div");
     right.className = "ovRight";
-    right.textContent = fmtHHMM(d.expectedTime);
+    right.textContent = fmtHHMM(depIso);
 
-    if (Number(d.delayMin) > 0){
-      const s = document.createElement("span");
-      s.className = "ovDelay";
-      s.textContent = `+${d.delayMin}`;
-      right.appendChild(s);
-    }
+    const badge = document.createElement("span");
+    badge.className = `ovTransfer ${classifyOvTransfer(transferMin)}`;
+    badge.textContent = `overstap ${transferMin} min`;
 
     row.appendChild(left);
     row.appendChild(mid);
     row.appendChild(right);
+    row.appendChild(badge);
+
     panelEl.appendChild(row);
   });
+
+  if (shown === 0){
+    const msg = document.createElement("div");
+    msg.className = "small";
+    msg.style.marginTop = "6px";
+    msg.textContent = "Geen haalbare OV-vertrektijden binnen 30 minuten na aankomst van de trein.";
+    panelEl.appendChild(msg);
+  }
+
+  const foot = document.createElement("div");
+  foot.className = "small";
+  foot.style.marginTop = "8px";
+  foot.innerHTML = `Trein aankomst: <b>${fmtTime(trainArrIso)}</b><br>OV filter: 0–30 min`;
+  panelEl.appendChild(foot);
 }
 
-async function loadOvIntoPanel(panelEl, stationCode, label){
+async function loadOv(panelEl, stationCode, title, trainArrIso){
   panelEl.innerHTML = `<div class="small">Laden…</div>`;
   try{
     const data = await fetchJson(`/ov/by-station?station=${encodeURIComponent(stationCode)}`);
-    renderInlineDepartures(panelEl, label, data);
+    renderOvPanel(panelEl, title, data, trainArrIso);
   } catch(e){
     panelEl.innerHTML = `<div class="small">${humanizeError(e)}</div>`;
   }
 }
 
-/* Render expandable trip card */
+/* Render expandable trip card (lazy details) */
 function renderExpandableTrip(opt){
   const card = document.createElement("div");
   card.className = "resultCard";
 
+  const depart = opt.depart;
+  const arrive = opt.arrive;
+  const durationMin = opt.durationMin;
   const legs = opt.legs || [];
   const transfersCount = Math.max(0, legs.length - 1);
 
@@ -789,8 +1112,8 @@ function renderExpandableTrip(opt){
   header.className = "resultHeader";
   header.innerHTML = `
     <div class="resultHeaderLeft">
-      <div class="tripTitle">Totale reistijd: ${opt.durationMin} min</div>
-      <div class="timeBig"><span>${fmtTime(opt.depart)}</span> → <span>${fmtTime(opt.arrive)}</span></div>
+      <div class="tripTitle">Totale reistijd: ${durationMin} min</div>
+      <div class="timeBig"><span>${fmtTime(depart)}</span> → <span>${fmtTime(arrive)}</span></div>
       <div class="badgeRow">
         <span class="badge">Overstappen: ${transfersCount}</span>
         ${minTransferMin !== null ? `<span class="badge ${minCls}">Min overstap: ${minTransferMin} min</span>` : ""}
@@ -803,7 +1126,6 @@ function renderExpandableTrip(opt){
   details.className = "details";
 
   let built = false;
-
   function buildDetails(){
     if (built) return;
     built = true;
@@ -831,67 +1153,57 @@ function renderExpandableTrip(opt){
       details.appendChild(tl);
     }
 
-    details.appendChild(Object.assign(document.createElement("div"), { className:"hr" }));
+    const hr = document.createElement("div");
+    hr.className = "hr";
+    details.appendChild(hr);
 
-    // per trip: onthoud welke ovPanel open is, zodat we kunnen sluiten
     let openPanel = null;
 
     legs.forEach((l, idx)=>{
       const x = normLeg(l);
 
-      const originCode = (String(x.originCode||"").trim().toLowerCase()) || (OV_NAME_TO_CODE.get(normName(x.originName)) || "");
-      const destCode   = (String(x.destCode||"").trim().toLowerCase())   || (OV_NAME_TO_CODE.get(normName(x.destName)) || "");
-
-      const showOriginBtn = originCode && OV_STATIONS.has(originCode);
-      const showDestBtn   = destCode && OV_STATIONS.has(destCode);
+      const destNameNorm = normName(x.destName || "");
+      const ovCode = OV_CODE_BY_NAME.get(destNameNorm) || null;
+      const showOv = Boolean(ovCode && x.arr);
 
       const legEl = document.createElement("div");
       legEl.className = "leg";
 
-      const line = document.createElement("div");
-      line.className = "legLine";
-      line.innerHTML = `
-        <span>${x.originName || "—"} (spoor ${x.depTrack ?? "?"})</span>
-        ${showOriginBtn ? `<button class="ovInlineBtn" data-ov="${originCode}" data-label="${x.originName||originCode}">OV</button>` : ""}
-        →
-        <span>${x.destName || "—"} (spoor ${x.arrTrack ?? "?"})</span>
-        ${showDestBtn ? `<button class="ovInlineBtn" data-ov="${destCode}" data-label="${x.destName||destCode}">OV</button>` : ""}
-        ${x.delayMin > 0 ? `<span class="delay"> +${x.delayMin} min</span>` : ""}
-      `;
-
-      const top = document.createElement("div");
-      top.className = "legTop";
-      top.innerHTML = `
+      const legTop = document.createElement("div");
+      legTop.className = "legTop";
+      legTop.innerHTML = `
         <div>🚆 ${x.product}</div>
         <div>${fmtTime(x.dep)} → ${fmtTime(x.arr)}</div>
       `;
 
-      // panel onder de regel
-      const panel = document.createElement("div");
-      panel.className = "ovPanel";
-      panel.style.display = "none";
+      const legLine = document.createElement("div");
+      legLine.className = "legLine";
+      legLine.innerHTML = `
+        ${x.originName || "—"} (spoor ${x.depTrack ?? "?"}) → ${x.destName || "—"} (spoor ${x.arrTrack ?? "?"})
+        ${x.delayMin > 0 ? `<span class="delay"> +${x.delayMin} min</span>` : ""}
+      `;
 
-      legEl.appendChild(top);
-      legEl.appendChild(line);
-      legEl.appendChild(panel);
+      if (showOv){
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "ovBtn";
+        btn.textContent = "OV";
+        legLine.appendChild(btn);
 
-      // click handlers
-      line.querySelectorAll("button.ovInlineBtn").forEach(btn=>{
+        const panel = document.createElement("div");
+        panel.className = "ovPanel";
+        panel.style.display = "none";
+        legEl.appendChild(panel);
+
         btn.addEventListener("click", async (e)=>{
           e.stopPropagation();
-          const code = btn.getAttribute("data-ov");
-          const label = btn.getAttribute("data-label") || code;
 
-          if (!code) return;
-
-          const isOpen = panel.style.display !== "none";
-
-          // sluit eventueel open panel (in deze trip)
           if (openPanel && openPanel !== panel){
             openPanel.style.display = "none";
             openPanel.innerHTML = "";
           }
 
+          const isOpen = panel.style.display !== "none";
           if (isOpen){
             panel.style.display = "none";
             panel.innerHTML = "";
@@ -902,14 +1214,18 @@ function renderExpandableTrip(opt){
           panel.style.display = "block";
           openPanel = panel;
 
-          await loadOvIntoPanel(panel, code, `Live OV bij ${label}`);
+          await loadOv(panel, ovCode, `Live OV bij ${x.destName}`, x.arr);
         });
-      });
+      }
 
+      legEl.appendChild(legTop);
+      legEl.appendChild(legLine);
       details.appendChild(legEl);
 
       if (idx < legs.length - 1) {
-        details.appendChild(Object.assign(document.createElement("div"), { className:"hr" }));
+        const hr2 = document.createElement("div");
+        hr2.className = "hr";
+        details.appendChild(hr2);
       }
     });
   }
@@ -926,8 +1242,17 @@ function renderExpandableTrip(opt){
   return card;
 }
 
-/* Search (altijd Extreem-B) */
+/* =========================
+   SEARCH (Normal / Extreme + vertrek/aankomst)
+   ========================= */
+const EXTREME_ENDPOINT = "/reis-extreme-b";
+const NORMAL_ENDPOINT  = "/reis";
+
 let inFlightSearch = null;
+
+function getMode(){
+  return localStorage.getItem(LS.mode) === "normal" ? "normal" : "extreme";
+}
 
 async function zoekReis(){
   humanErrorEl.textContent = "";
@@ -946,26 +1271,33 @@ async function zoekReis(){
     const vanName = vanInput.value.trim();
     const naarName = naarInput.value.trim();
     const dt = buildDateTime();
+    const searchType = searchTypeEl.value;
+    const searchForArrival = (searchType === "arrive");
 
-    if (!vanName || !naarName) return alert("Vul van en naar in.");
-    if (!dt) return alert("Kies datum/tijd.");
+    if (!vanName || !naarName) { humanErrorEl.textContent = "Vul van en naar in."; return; }
+    if (!dt) { humanErrorEl.textContent = "Kies datum/tijd."; return; }
 
     zoekBtn.disabled = true;
     zoekBtn.textContent = "Zoeken…";
 
     const [vanCode, naarCode] = await Promise.all([
-      resolveCode(vanName, vanList),
-      resolveCode(naarName, naarList)
+      resolveCode(vanName, vanList, "van"),
+      resolveCode(naarName, naarList, "naar")
     ]);
 
-    if (!vanCode || !naarCode) return alert("Kies stations uit de lijst (klik op een suggestie).");
+    if (!vanCode || !naarCode) {
+      humanErrorEl.textContent = "⚠️ Kies stations uit de lijst (klik op een suggestie).";
+      return;
+    }
 
-    const data = await fetchJson(
-      `/reis-extreme-b?van=${encodeURIComponent(vanCode)}&naar=${encodeURIComponent(naarCode)}&datetime=${encodeURIComponent(dt)}`,
-      { signal }
-    );
+    const endpoint = (getMode() === "normal") ? NORMAL_ENDPOINT : EXTREME_ENDPOINT;
 
+    const url =
+      `${endpoint}?van=${encodeURIComponent(vanCode)}&naar=${encodeURIComponent(naarCode)}&datetime=${encodeURIComponent(dt)}&searchForArrival=${encodeURIComponent(String(searchForArrival))}`;
+
+    const data = await fetchJson(url, { signal });
     const opts = Array.isArray(data.options) ? data.options : [];
+
     if (!opts.length) {
       resultaat.innerHTML = `<div class="resultCard">Geen opties gevonden.</div>`;
       return;
@@ -994,7 +1326,7 @@ async function zoekReis(){
 }
 
 /* Enter = zoeken */
-[vanInput, naarInput, dateInput, hourSelect, minuteSelect].forEach(el=>{
+[vanInput, naarInput, dateInput, hourSelect, minuteSelect, searchTypeEl].forEach(el=>{
   el.addEventListener("keydown",(e)=>{
     if (e.key==="Enter"){ e.preventDefault(); zoekReis(); }
   });
@@ -1009,9 +1341,10 @@ wisselBtn.addEventListener("click", ()=>{
   persistStations();
 });
 
-/* FAVORIETE REIZEN (LOCALSTORAGE) */
-const FAV_KEY = "planner_favorieten_v1";
-const norm = (s) => String(s || "").trim().replace(/\s+/g, " ").toLowerCase();
+/* =========================
+   FAVORIETEN (LOCALSTORAGE v2) + SLEPEN/SORTEREN
+   ========================= */
+const FAV_KEY = "planner_favorieten_v2";
 
 function getFavs() {
   try {
@@ -1025,6 +1358,15 @@ function getFavs() {
 function saveFavs(favs) {
   localStorage.setItem(FAV_KEY, JSON.stringify(favs));
 }
+function moveItem(arr, from, to){
+  const a = arr.slice();
+  const [x] = a.splice(from, 1);
+  a.splice(to, 0, x);
+  return a;
+}
+
+let dragIndex = null;
+
 function laadFavorieten() {
   const favs = getFavs();
   favDiv.innerHTML = "";
@@ -1039,16 +1381,41 @@ function laadFavorieten() {
   favs.forEach((f, i) => {
     const row = document.createElement("div");
     row.className = "favitem";
+    row.draggable = true;
+    row.dataset.index = String(i);
 
-    const label = document.createElement("span");
-    label.textContent = `${f.van} → ${f.naar}`;
+    row.addEventListener("dragstart", (e)=>{
+      dragIndex = i;
+      try { e.dataTransfer.setData("text/plain", String(i)); } catch {}
+      e.dataTransfer.effectAllowed = "move";
+    });
+    row.addEventListener("dragover", (e)=>{
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+    });
+    row.addEventListener("drop", (e)=>{
+      e.preventDefault();
+      const from = (dragIndex !== null) ? dragIndex : Number(e.dataTransfer.getData("text/plain"));
+      const to = i;
+      if (!Number.isFinite(from) || from === to) return;
 
-    const del = document.createElement("button");
-    del.className = "favDel";
-    del.type = "button";
-    del.textContent = "✖";
+      const updated = moveItem(getFavs(), from, to);
+      saveFavs(updated);
+      laadFavorieten();
+    });
 
-    label.onclick = () => {
+    const left = document.createElement("div");
+    left.className = "favLeft";
+
+    const grip = document.createElement("div");
+    grip.className = "favGrip";
+    grip.title = "Sleep om te sorteren";
+    grip.textContent = "⠿";
+
+    const name = document.createElement("div");
+    name.className = "favName";
+    name.textContent = `${f.van} → ${f.naar}`;
+    name.onclick = () => {
       vanInput.value = f.van;
       naarInput.value = f.naar;
       persistStations();
@@ -1056,15 +1423,54 @@ function laadFavorieten() {
       window.scrollTo({ top: 0, behavior: "smooth" });
     };
 
+    left.appendChild(grip);
+    left.appendChild(name);
+
+    const right = document.createElement("div");
+    right.className = "favRight";
+
+    const up = document.createElement("button");
+    up.className = "favMove";
+    up.type = "button";
+    up.textContent = "▲";
+    up.title = "Omhoog";
+    up.disabled = (i === 0);
+    up.onclick = ()=>{
+      const updated = moveItem(getFavs(), i, i-1);
+      saveFavs(updated);
+      laadFavorieten();
+    };
+
+    const down = document.createElement("button");
+    down.className = "favMove";
+    down.type = "button";
+    down.textContent = "▼";
+    down.title = "Omlaag";
+    down.disabled = (i === favs.length - 1);
+    down.onclick = ()=>{
+      const updated = moveItem(getFavs(), i, i+1);
+      saveFavs(updated);
+      laadFavorieten();
+    };
+
+    const del = document.createElement("button");
+    del.className = "favDel";
+    del.type = "button";
+    del.textContent = "✖";
     del.onclick = () => {
-      const updated = favs.slice();
+      const updated = getFavs();
       updated.splice(i, 1);
       saveFavs(updated);
       laadFavorieten();
     };
 
-    row.appendChild(label);
-    row.appendChild(del);
+    right.appendChild(up);
+    right.appendChild(down);
+    right.appendChild(del);
+
+    row.appendChild(left);
+    row.appendChild(right);
+
     frag.appendChild(row);
   });
 
@@ -1074,27 +1480,80 @@ function laadFavorieten() {
 favBtn.addEventListener("click", () => {
   const van = vanInput.value.trim();
   const naar = naarInput.value.trim();
-  if (!van || !naar) return alert("Vul van en naar in.");
+  if (!van || !naar) { alert("Vul van en naar in."); return; }
 
   const favs = getFavs();
-  const exists = favs.some((f) => norm(f.van) === norm(van) && norm(f.naar) === norm(naar));
-  if (exists) return alert("Deze favoriete reis bestaat al.");
+  const exists = favs.some(f =>
+    String(f.van).toLowerCase() === van.toLowerCase() &&
+    String(f.naar).toLowerCase() === naar.toLowerCase()
+  );
+  if (exists) { alert("Deze favoriete reis bestaat al."); return; }
 
-  favs.push({ van, naar });
+  favs.push({ id: String(Date.now()), van, naar });
   saveFavs(favs);
   laadFavorieten();
 
   const old = favBtn.textContent;
   favBtn.textContent = "✅ Opgeslagen";
-  setTimeout(() => (favBtn.textContent = old), 900);
+  setTimeout(()=>{ favBtn.textContent = old; }, 900);
 });
 
 laadFavorieten();
 
-/* PWA */
+/* =========================
+   PWA: update-melding + herladen
+   ========================= */
+const updateBanner = document.getElementById("updateBanner");
+const reloadBtn = document.getElementById("reloadBtn");
+
+let swReg = null;
+
+function showUpdateBanner(){ updateBanner.style.display = "block"; }
+function hideUpdateBanner(){ updateBanner.style.display = "none"; }
+
+reloadBtn.addEventListener("click", async ()=>{
+  if (swReg?.waiting){
+    try{ swReg.waiting.postMessage({ type: "SKIP_WAITING" }); } catch {}
+  } else {
+    location.reload();
+  }
+});
+
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js");
+  navigator.serviceWorker.register("/sw.js").then((reg)=>{
+    swReg = reg;
+
+    if (reg.waiting) showUpdateBanner();
+
+    reg.addEventListener("updatefound", ()=>{
+      const newWorker = reg.installing;
+      if (!newWorker) return;
+
+      newWorker.addEventListener("statechange", ()=>{
+        if (newWorker.state === "installed" && navigator.serviceWorker.controller){
+          showUpdateBanner();
+        }
+      });
+    });
+
+  }).catch(()=>{});
+
+  navigator.serviceWorker.addEventListener("controllerchange", ()=>{
+    hideUpdateBanner();
+    location.reload();
+  });
 }
 </script>
+
+<!--
+✅ sw.js moet dit ondersteunen:
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
+});
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
+-->
 </body>
 </html>
