@@ -1,53 +1,44 @@
 {
   "name": "Toepoel's Reisplanner",
   "short_name": "Reisplanner",
-  "description": "Treinplanner met normale en extra korte overstappen. Bekijk minimale overstaptijd en live OV-aansluitingen.",
-  "lang": "nl-NL",
+  "description": "Snelle treinplanner met normale én extra korte overstappen, minimale overstaptijd en live OV-aansluitingen.",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
+  "background_color": "#275D63",
   "theme_color": "#275D63",
-  "background_color": "#0f1415",
-  "categories": ["travel", "utilities", "navigation"],
+  "lang": "nl",
+  "categories": [
+    "travel",
+    "transport"
+  ],
   "icons": [
     {
       "src": "/logo-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/logo-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
+      "purpose": "any maskable"
     },
     {
       "src": "/logo-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/logo-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
+      "purpose": "any maskable"
     }
   ],
   "shortcuts": [
     {
-      "name": "Nieuwe reis zoeken",
-      "short_name": "Zoeken",
-      "url": "/",
-      "icons": [{ "src": "/logo-192.png", "sizes": "192x192", "type": "image/png" }]
+      "name": "Extra korte overstappen",
+      "short_name": "Extreme",
+      "description": "Start direct in modus extra korte overstappen",
+      "url": "/?mode=extreme"
     },
     {
-      "name": "Uitleg (Over)",
-      "short_name": "Over",
-      "url": "/over.html",
-      "icons": [{ "src": "/logo-192.png", "sizes": "192x192", "type": "image/png" }]
+      "name": "Normale overstappen",
+      "short_name": "Normaal",
+      "description": "Start direct in normale overstapmodus",
+      "url": "/?mode=normal"
     }
   ]
 }
