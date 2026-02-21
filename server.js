@@ -1,5 +1,8 @@
-// server.js (Render production) — light stability optimizations
-// p-limit + rate limiting + caching + prefix fallback + slimme Extreme-B
+// server.js (Render production)
+// p-limit + rate limiting + caching + prefix fallback + slimme Extreme-B + OVapi (bus/tram/metro)
+
+import dns from "dns";
+dns.setDefaultResultOrder("ipv4first"); // ✅ belangrijk voor Render/IPv6 issues
 
 import express from "express";
 import fetch from "node-fetch";
@@ -15,11 +18,7 @@ const app = express();
 /** ✅ Render / proxies: MOET vóór rate-limit */
 app.set("trust proxy", 1);
 
-// kleine hardening / netheid
-app.disable("x-powered-by");
-
 const PORT = process.env.PORT || 3000;
-const HOST = "0.0.0.0"; // ✅ belangrijk op Render
 
 app.use(express.json());
 
@@ -52,7 +51,6 @@ app.use(
     max: 180, // algemeen
     standardHeaders: true,
     legacyHeaders: false,
-    // trust proxy staat aan, dus req.ip is OK
   })
 );
 
@@ -94,19 +92,10 @@ function requireApiKey(res) {
 }
 
 /* =========================
-   Health (handig voor Render checks)
+   Health
    ========================= */
-app.get("/healthz", (req, res) => {
-  res.status(200).json({
-    ok: true,
-    hasApiKey: Boolean(API_KEY),
-    node: process.version,
-  });
-});
-
-// backwards compat met je oude endpoint
 app.get("/health", (req, res) => {
-  res.status(200).json({
+  res.json({
     ok: true,
     hasApiKey: Boolean(API_KEY),
     node: process.version,
@@ -125,13 +114,8 @@ const limitStations = pLimit(4);
 async function fetchWithTimeout(url, options = {}, ms = 10000) {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), ms);
-
   try {
     return await fetch(url, { ...options, signal: controller.signal });
-  } catch (err) {
-    // AbortError is "normaal" bij timeouts — geef nettere error
-    if (err?.name === "AbortError") throw new Error("Timeout bij upstream request");
-    throw err;
   } finally {
     clearTimeout(t);
   }
@@ -214,10 +198,6 @@ app.delete("/favorieten/:index", async (req, res) => {
 
 /* =========================
    STATIONS (autocomplete) — FAST
-   - TTL cache
-   - prefix fallback
-   - in-flight dedupe
-   - cleanup to prevent memory growth
    ========================= */
 const stationCache = new Map(); // key -> {t, payload}
 const stationInFlight = new Map(); // key -> Promise
@@ -237,7 +217,6 @@ function stationCacheGet(key) {
 function stationCacheSet(key, payload) {
   stationCache.set(key, { t: Date.now(), payload });
 
-  // safety cap: verwijder oudste entries
   if (stationCache.size > STATION_MAX_KEYS) {
     const entries = Array.from(stationCache.entries()).sort((a, b) => a[1].t - b[1].t);
     const removeCount = stationCache.size - STATION_MAX_KEYS;
@@ -246,7 +225,6 @@ function stationCacheSet(key, payload) {
 }
 
 function bestPrefixCached(key) {
-  // zoek vanaf lang naar kort (min 2 chars)
   for (let i = key.length - 1; i >= 2; i--) {
     const pref = key.slice(0, i);
     const val = stationCacheGet(pref);
@@ -255,7 +233,6 @@ function bestPrefixCached(key) {
   return null;
 }
 
-// periodieke cleanup (tegen memory groei)
 setInterval(() => {
   const now = Date.now();
   for (const [k, v] of stationCache.entries()) {
@@ -299,18 +276,15 @@ app.get("/stations", async (req, res) => {
   if (!q) return res.json([]);
 
   res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
-
   const key = q.toLowerCase();
 
   try {
     const exact = stationCacheGet(key);
 
-    // ✅ prefix fallback: direct antwoord met oudere prefix resultaten
     if (!exact) {
       const pref = bestPrefixCached(key);
       if (pref) {
         res.json(pref);
-        // op achtergrond echte query ophalen
         fetchStationsCached(q).catch(() => {});
         return;
       }
@@ -372,6 +346,8 @@ function tripToOption(trip) {
     arrive,
     minTransferMin,
     legs: legs.map((l) => ({
+      origin: l.origin || null,
+      destination: l.destination || null,
       originName: l.origin?.name,
       destName: l.destination?.name,
       dep: l.origin?.plannedDateTime,
@@ -398,7 +374,6 @@ function combineOptions(optA, optB) {
   const bDep = Date.parse(optB.depart);
   const transferMin = Math.round((bDep - aArr) / 60000);
 
-  // ✅ nooit negatieve overstap
   if (!Number.isFinite(transferMin) || transferMin < 0) return null;
 
   let minTransferMin = optA.minTransferMin;
@@ -466,11 +441,10 @@ app.get("/reis-extreme-b", async (req, res) => {
   const TO = String(naar);
   const DT = String(datetime);
 
-  // Tunables
   const MAX_VIA = 8;
   const TOP_A = 5;
   const TOP_B = 8;
-  const MAX_TRANSFER = 20; // 0..20 min
+  const MAX_TRANSFER = 20;
   const TARGET = 10;
 
   function scoreOption(o) {
@@ -495,7 +469,6 @@ app.get("/reis-extreme-b", async (req, res) => {
       return res.json({ options: options.slice(0, TARGET) });
     }
 
-    // via frequentie
     const viaCount = new Map();
     for (const t of baseTrips) {
       const legs = t.legs || [];
@@ -511,7 +484,6 @@ app.get("/reis-extreme-b", async (req, res) => {
       .slice(0, MAX_VIA)
       .map(([nm]) => nm);
 
-    // resolve via codes (parallel)
     const viaCodeResults = await Promise.all(
       viaNames.map((nm) =>
         limitStations(async () => {
@@ -525,7 +497,6 @@ app.get("/reis-extreme-b", async (req, res) => {
 
     const viaCodes = viaCodeResults.filter(Boolean);
 
-    // combos verzamelen
     const best = [];
     function pushBest(o) {
       best.push(o);
@@ -538,7 +509,6 @@ app.get("/reis-extreme-b", async (req, res) => {
     await Promise.all(
       viaCodes.map((via) =>
         limitTrips(async () => {
-          // A: FROM -> VIA
           const aData = await fetchTrips({
             from: FROM,
             to: via,
@@ -581,7 +551,6 @@ app.get("/reis-extreme-b", async (req, res) => {
       )
     );
 
-    // merge + dedupe + sort
     const all = [...options, ...best].filter(Boolean);
     const seen = new Set();
     const deduped = [];
@@ -603,53 +572,149 @@ app.get("/reis-extreme-b", async (req, res) => {
 });
 
 /* =========================
-   Global error safety nets (stability)
+   OVapi
    ========================= */
-process.on("unhandledRejection", (reason) => {
-  console.error("❌ unhandledRejection:", reason);
+const ovLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 220,
+  standardHeaders: true,
+  legacyHeaders: false,
 });
+app.use("/ov", ovLimiter);
 
-process.on("uncaughtException", (err) => {
-  console.error("❌ uncaughtException:", err);
-  // hard crash is soms beter, maar op Render wil je meestal wél netjes stoppen:
-  // geef even tijd om logs te flushen en stop dan.
-  setTimeout(() => process.exit(1), 250).unref();
+// jouw haltecodes (Dordrecht Centraal Station perron A = 53600140)
+const STATION_TO_TPC = {
+  ddr: ["53600140"],
+  ddzd: ["53608690"],
+  rtb: ["31001125", "31008134"],
+  rtd: ["31003941", "31001016", "31008000"],
+  gvh: ["32003846"],
+  gvc: ["32002609"],
+};
+
+const ovCache = new Map();
+const OV_TTL_MS = 15 * 1000;
+
+function ovCacheGet(key) {
+  const hit = ovCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.t > OV_TTL_MS) {
+    ovCache.delete(key);
+    return null;
+  }
+  return hit.payload;
+}
+function ovCacheSet(key, payload) {
+  ovCache.set(key, { t: Date.now(), payload });
+}
+
+async function fetchOvTpcSafe(tpc) {
+  const url = `https://v0.ovapi.nl/tpc/${encodeURIComponent(tpc)}`;
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const raw = await fetchJsonStrict(
+        url,
+        {
+          headers: {
+            Accept: "application/json",
+            "User-Agent": "toepoels-planner/1.07",
+          },
+        },
+        8000
+      );
+      return { ok: true, raw };
+    } catch (e) {
+      if (attempt === 2) return { ok: false, error: String(e?.message || e) };
+    }
+  }
+  return { ok: false, error: "onbekend" };
+}
+
+function normalizeOvapi(tpc, dataRaw) {
+  if (!dataRaw) return [];
+  const root = dataRaw?.[String(tpc)];
+  const stopName = root?.Stop?.Name || null;
+  const passes = root?.Passes ? Object.values(root.Passes) : [];
+  const items = [];
+
+  for (const p of passes) {
+    const line = p?.LinePublicNumber ?? p?.LineName ?? "";
+    const dest = p?.DestinationName ?? "";
+    const planned = p?.TargetDepartureTime ?? p?.PlannedDepartureTime ?? null;
+    const expected = p?.ExpectedDepartureTime ?? planned ?? null;
+    if (!expected) continue;
+
+    const delayMin = (() => {
+      const a = Date.parse(planned);
+      const b = Date.parse(expected);
+      if (!isFinite(a) || !isFinite(b)) return 0;
+      return Math.max(0, Math.round((b - a) / 60000));
+    })();
+
+    items.push({
+      tpc: String(tpc),
+      stopName,
+      line: String(line),
+      destination: String(dest),
+      plannedTime: planned,
+      expectedTime: expected,
+      delayMin,
+      transportType: p?.TransportType || null,
+      operator: p?.OperatorName || null,
+    });
+  }
+
+  items.sort((a, b) => Date.parse(a.expectedTime) - Date.parse(b.expectedTime));
+  return items;
+}
+
+app.get("/ov/by-station", async (req, res) => {
+  const station = String(req.query.station || "").trim().toLowerCase();
+  const tpcs = STATION_TO_TPC[station];
+
+  if (!tpcs) return res.status(404).json({ error: "Station niet in OV mapping" });
+
+  const key = `station:${station}`;
+  const cached = ovCacheGet(key);
+  if (cached) return res.json(cached);
+
+  const settled = await Promise.all(
+    tpcs.map(async (tpc) => {
+      const r = await fetchOvTpcSafe(tpc);
+      if (!r.ok) {
+        return { tpc: String(tpc), stopName: null, passCount: 0, departures: [], error: r.error };
+      }
+      const raw = r.raw;
+      const root = raw?.[String(tpc)];
+      const stopName = root?.Stop?.Name || null;
+      const passCount = root?.Passes ? Object.keys(root.Passes).length : 0;
+      const deps = normalizeOvapi(tpc, raw);
+      return { tpc: String(tpc), stopName, passCount, departures: deps, error: null };
+    })
+  );
+
+  const merged = settled
+    .map((x) => x.departures || [])
+    .flat()
+    .filter(Boolean)
+    .sort((a, b) => Date.parse(a.expectedTime) - Date.parse(b.expectedTime));
+
+  const payload = {
+    station,
+    tpcs,
+    perStop: settled,
+    departures: merged.slice(0, 18),
+  };
+
+  ovCacheSet(key, payload);
+  res.setHeader("Cache-Control", "public, max-age=10, stale-while-revalidate=20");
+  res.json(payload);
 });
 
 /* =========================
-   Start + timeouts + graceful shutdown
+   Start
    ========================= */
-const server = app.listen(PORT, HOST, () => {
-  console.log(`✅ Server draait op http://${HOST}:${PORT} (PORT=${PORT})`);
+app.listen(PORT, () => {
+  console.log(`✅ Server draait op http://localhost:${PORT} (PORT=${PORT})`);
 });
-
-// Timeouts: goede defaults achter proxies / load balancers
-// (waarden zijn bewust “mild”: geen agressieve timeouts)
-server.keepAliveTimeout = 70_000; // > typical proxy idle (bijv 60s)
-server.headersTimeout = 75_000;   // moet > keepAliveTimeout
-// Node 18+ heeft ook requestTimeout; zet 'm mild zodat hanging requests niet eeuwig blijven
-server.requestTimeout = 120_000;
-
-// Graceful shutdown: Render stuurt SIGTERM bij deploy/scale-down
-let shuttingDown = false;
-
-async function shutdown(signal) {
-  if (shuttingDown) return;
-  shuttingDown = true;
-
-  console.log(`🧯 ${signal} ontvangen: graceful shutdown...`);
-
-  // stop met nieuwe verbindingen accepteren
-  server.close((err) => {
-    if (err) console.error("Server close error:", err);
-  });
-
-  // force-exit na een redelijke tijd (voorkomt “hang” bij stuck connections)
-  setTimeout(() => {
-    console.log("🧯 Force exit na timeout.");
-    process.exit(0);
-  }, 12_000).unref();
-}
-
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
