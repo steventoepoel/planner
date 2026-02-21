@@ -5,8 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Toepoel's</title>
 
-<!-- ✅ Versie -->
-<meta name="app-version" content="1.06" />
+<meta name="app-version" content="1.07" />
 
 <link rel="manifest" href="/manifest.json" />
 <meta name="theme-color" content="#275D63" />
@@ -37,7 +36,6 @@
   --warnText:#1a1a1a;
 }
 
-/* ✅ Volgt device theme automatisch */
 @media (prefers-color-scheme: dark){
   :root{
     --bg:#0f1415;
@@ -68,13 +66,11 @@ body{
   padding-bottom: max(14px, env(safe-area-inset-bottom));
 }
 
-/* Safe area */
 .safe{
   padding-left: max(14px, env(safe-area-inset-left));
   padding-right:max(14px, env(safe-area-inset-right));
 }
 
-/* Header */
 header{
   background:var(--brand);
   color:var(--brandText);
@@ -117,12 +113,10 @@ header{
   opacity:0.95;
 }
 
-/* Hide header text on mobile */
 @media (max-width:768px){
   .headerControls{ display:none; }
 }
 
-/* Content */
 .container{
   max-width:1000px;
   margin:auto;
@@ -162,7 +156,6 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
 
 .small{ color:var(--muted); font-size:13px; line-height:1.35; }
 
-/* Datum/tijd layout */
 .datetimeRow{
   display:flex;
   gap:12px;
@@ -183,7 +176,6 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   .datetimeRow .timeCols{ width:100%; }
 }
 
-/* Result cards (clickable + expand) */
 .resultCard{
   background:var(--card);
   border:1px solid var(--border);
@@ -315,7 +307,45 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   font-weight:900;
 }
 
-/* Footer */
+/* Inline OV button */
+.ovInlineBtn{
+  width:auto;
+  padding:6px 10px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background:var(--chip);
+  color:var(--text);
+  font-weight:900;
+  font-size:12px;
+  margin-left:8px;
+  cursor:pointer;
+}
+
+/* Inline OV panel (onder de regel) */
+.ovPanel{
+  margin-top:10px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:10px;
+  background:rgba(0,0,0,0.02);
+}
+@media (prefers-color-scheme: dark){
+  .ovPanel{ background:rgba(255,255,255,0.04); }
+}
+.ovItem{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  padding:8px 10px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  margin-top:8px;
+}
+.ovLeft{ font-weight:900; white-space:nowrap; }
+.ovMid{ color:var(--muted); font-weight:800; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.ovRight{ font-weight:900; white-space:nowrap; }
+.ovDelay{ color:var(--bad); font-weight:900; margin-left:6px; }
+
 .footer{
   max-width:1000px;
   margin:20px auto;
@@ -334,8 +364,6 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
         <img src="/logo-192.png" alt="Logo">
         <div class="tagline">Dé reisplanner met <u>alle</u> overstappen!</div>
       </div>
-
-      <!-- ✅ desktop only -->
       <div class="headerControls" title="Altijd Extreem-B ingeschakeld">
         ⚡ Altijd Extreem
       </div>
@@ -392,13 +420,11 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
 </div>
 
 <script>
-/* =========================
-   VERSION
-   ========================= */
+/* VERSION */
 const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content || "onbekend";
 document.getElementById("appVersion").textContent = APP_VERSION;
 
-/* ------------ helpers ------------ */
+/* helpers */
 function pad2(n){ return String(n).padStart(2,"0"); }
 function roundTo5Min(d){
   const x = new Date(d);
@@ -417,10 +443,8 @@ function fmtTime(iso){
 }
 function humanizeError(err){
   const msg = String(err || "");
-
   if (msg.includes("Vertrek- en aankomststation mogen niet hetzelfde zijn"))
     return "⚠️ Je hebt hetzelfde station gekozen bij vertrek en aankomst.";
-
   if (!navigator.onLine) return "Je bent offline. Probeer later opnieuw.";
   if (msg.includes("HTTP 401") || msg.includes("HTTP 403")) return "NS API key werkt niet (toegang geweigerd).";
   if (msg.includes("HTTP 500") || msg.includes("HTTP 502") || msg.includes("HTTP 503")) return "NS API is tijdelijk niet bereikbaar.";
@@ -453,6 +477,7 @@ function transferClass(min){
   if (min < 3) return "ok";
   return "good";
 }
+function normName(x){ return (x||"").trim().toLowerCase(); }
 
 /* Normalize leg */
 function normLeg(l){
@@ -461,6 +486,9 @@ function normLeg(l){
 
   const originName = l?.originName || l?.origin?.name || null;
   const destName   = l?.destName   || l?.destination?.name || null;
+
+  const originCode = l?.originCode || l?.origin?.stationCode || l?.origin?.code || null;
+  const destCode   = l?.destCode   || l?.destination?.stationCode || l?.destination?.code || null;
 
   const depTrack = l?.depTrack ?? l?.origin?.plannedTrack ?? "?";
   const arrTrack = l?.arrTrack ?? l?.destination?.plannedTrack ?? "?";
@@ -474,7 +502,7 @@ function normLeg(l){
     l?.product?.categoryName ||
     "Trein";
 
-  return { dep, arr, originName, destName, depTrack, arrTrack, delayMin, product };
+  return { dep, arr, originName, destName, originCode, destCode, depTrack, arrTrack, delayMin, product };
 }
 
 function computeTransfersFromLegs(legs){
@@ -495,8 +523,6 @@ function computeTransfersFromLegs(legs){
 
     const m = Math.round((bT - aT)/60000);
     const station = a.destName || "Overstap";
-
-    // ✅ laat geen negatieve overstappen zien
     if (m < 0) continue;
 
     transfers.push({ station, minutes: m });
@@ -509,13 +535,10 @@ function sortByStartTime(arr){
   return arr.sort((a,b)=> (+new Date(a.depart)) - (+new Date(b.depart)));
 }
 
-/* ------------ state keys ------------ */
-const LS = {
-  van:"last_van",
-  naar:"last_naar"
-};
+/* state keys */
+const LS = { van:"last_van", naar:"last_naar" };
 
-/* ------------ elements ------------ */
+/* elements */
 const vanInput = document.getElementById("van");
 const naarInput = document.getElementById("naar");
 const stationsVan = document.getElementById("stationsVan");
@@ -530,10 +553,8 @@ const favDiv = document.getElementById("favorieten");
 const resultaat = document.getElementById("resultaat");
 const humanErrorEl = document.getElementById("humanError");
 
-/* ✅ keyboard weg als je ergens tikt (mobile) */
-function dismissKeyboard(){
-  document.activeElement?.blur?.();
-}
+/* keyboard weg (mobile) */
+function dismissKeyboard(){ document.activeElement?.blur?.(); }
 document.addEventListener("touchstart", (e) => {
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.closest?.("button"))) return;
@@ -545,13 +566,13 @@ document.addEventListener("click", (e) => {
   dismissKeyboard();
 });
 
-/* date fully clickable */
+/* date picker */
 dateInput.addEventListener("click", ()=>{
   if (dateInput.showPicker) dateInput.showPicker();
   else dateInput.focus();
 });
 
-/* fill time selects */
+/* time selects */
 for(let h=0; h<24; h++){
   const o=document.createElement("option");
   o.value=pad2(h); o.textContent=pad2(h);
@@ -567,7 +588,7 @@ for(let m=0; m<60; m+=5){
 vanInput.value = localStorage.getItem(LS.van) || "";
 naarInput.value = localStorage.getItem(LS.naar) || "";
 
-/* ✅ Datum/tijd bij start altijd NU */
+/* start time = now */
 const now = roundTo5Min(new Date());
 dateInput.value = localISODate(now);
 hourSelect.value = pad2(now.getHours());
@@ -582,7 +603,6 @@ function persistStations(){
   naarInput.addEventListener(evt, persistStations);
 });
 
-/* click-to-clear stations */
 function clearOnClick(el, key){
   el.addEventListener("click", ()=>{
     if (el.value.trim()) {
@@ -594,19 +614,17 @@ function clearOnClick(el, key){
 clearOnClick(vanInput, LS.van);
 clearOnClick(naarInput, LS.naar);
 
-/* ------------ autocomplete (sneller) ------------ */
+/* autocomplete */
 let vanList = [];
 let naarList = [];
 
-const stationCache = new Map(); // key: query lowercase -> array
+const stationCache = new Map();
 let stationAbortVan = null;
 let stationAbortNaar = null;
 
-function normName(x){ return (x||"").trim().toLowerCase(); }
-
 async function loadStations(q, listEl, store, which){
   const query = (q || "").trim();
-  if (query.length < 1) return; // al vanaf 1 teken
+  if (query.length < 1) return;
 
   const key = query.toLowerCase();
   if (stationCache.has(key)){
@@ -622,7 +640,6 @@ async function loadStations(q, listEl, store, which){
     return;
   }
 
-  // abort previous request for this field
   if (which === "van"){
     if (stationAbortVan) stationAbortVan.abort();
     stationAbortVan = new AbortController();
@@ -668,14 +685,98 @@ function buildDateTime(){
   return `${dateInput.value}T${hourSelect.value}:${minuteSelect.value}`;
 }
 
-/* Render expandable trip card (lazy details) */
+/* =========================
+   Inline OV (v1.07)
+   ========================= */
+const OV_STATIONS = new Set(["ddr","ddzd","rtb","rtd","gvh","gvc"]);
+const OV_NAME_TO_CODE = new Map([
+  ["dordrecht", "ddr"],
+  ["dordrecht zuid", "ddzd"],
+  ["rotterdam blaak", "rtb"],
+  ["rotterdam centraal", "rtd"],
+  ["den haag hs", "gvh"],
+  ["den haag centraal", "gvc"],
+]);
+
+function iconForType(t){
+  const x = String(t || "").toUpperCase();
+  if (x.includes("METRO")) return "🚇";
+  if (x.includes("TRAM")) return "🚋";
+  return "🚌";
+}
+function fmtHHMM(iso){
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+}
+
+function renderInlineDepartures(panelEl, title, data){
+  panelEl.innerHTML = "";
+
+  const head = document.createElement("div");
+  head.style.fontWeight = "900";
+  head.textContent = title;
+  panelEl.appendChild(head);
+
+  const deps = data?.departures || [];
+  if (!deps.length){
+    const dbg = (data?.perStop || [])
+      .map(x => `${x.tpc} (${x.stopName || "?"}) passes=${x.passCount}`)
+      .join(" • ");
+
+    const msg = document.createElement("div");
+    msg.className = "small";
+    msg.style.marginTop = "6px";
+    msg.innerHTML = `Geen live vertrektijden gevonden (of tijdelijk niet beschikbaar).<br><span style="opacity:0.9;">Debug: ${dbg || "—"}</span>`;
+    panelEl.appendChild(msg);
+    return;
+  }
+
+  deps.slice(0, 10).forEach(d => {
+    const row = document.createElement("div");
+    row.className = "ovItem";
+
+    const left = document.createElement("div");
+    left.className = "ovLeft";
+    left.textContent = `${iconForType(d.transportType)} ${d.line || ""}`.trim();
+
+    const mid = document.createElement("div");
+    mid.className = "ovMid";
+    mid.textContent = d.destination || d.stopName || "";
+
+    const right = document.createElement("div");
+    right.className = "ovRight";
+    right.textContent = fmtHHMM(d.expectedTime);
+
+    if (Number(d.delayMin) > 0){
+      const s = document.createElement("span");
+      s.className = "ovDelay";
+      s.textContent = `+${d.delayMin}`;
+      right.appendChild(s);
+    }
+
+    row.appendChild(left);
+    row.appendChild(mid);
+    row.appendChild(right);
+    panelEl.appendChild(row);
+  });
+}
+
+async function loadOvIntoPanel(panelEl, stationCode, label){
+  panelEl.innerHTML = `<div class="small">Laden…</div>`;
+  try{
+    const data = await fetchJson(`/ov/by-station?station=${encodeURIComponent(stationCode)}`);
+    renderInlineDepartures(panelEl, label, data);
+  } catch(e){
+    panelEl.innerHTML = `<div class="small">${humanizeError(e)}</div>`;
+  }
+}
+
+/* Render expandable trip card */
 function renderExpandableTrip(opt){
   const card = document.createElement("div");
   card.className = "resultCard";
 
-  const depart = opt.depart;
-  const arrive = opt.arrive;
-  const durationMin = opt.durationMin;
   const legs = opt.legs || [];
   const transfersCount = Math.max(0, legs.length - 1);
 
@@ -688,8 +789,8 @@ function renderExpandableTrip(opt){
   header.className = "resultHeader";
   header.innerHTML = `
     <div class="resultHeaderLeft">
-      <div class="tripTitle">Totale reistijd: ${durationMin} min</div>
-      <div class="timeBig"><span>${fmtTime(depart)}</span> → <span>${fmtTime(arrive)}</span></div>
+      <div class="tripTitle">Totale reistijd: ${opt.durationMin} min</div>
+      <div class="timeBig"><span>${fmtTime(opt.depart)}</span> → <span>${fmtTime(opt.arrive)}</span></div>
       <div class="badgeRow">
         <span class="badge">Overstappen: ${transfersCount}</span>
         ${minTransferMin !== null ? `<span class="badge ${minCls}">Min overstap: ${minTransferMin} min</span>` : ""}
@@ -702,6 +803,7 @@ function renderExpandableTrip(opt){
   details.className = "details";
 
   let built = false;
+
   function buildDetails(){
     if (built) return;
     built = true;
@@ -729,30 +831,85 @@ function renderExpandableTrip(opt){
       details.appendChild(tl);
     }
 
-    const hr = document.createElement("div");
-    hr.className = "hr";
-    details.appendChild(hr);
+    details.appendChild(Object.assign(document.createElement("div"), { className:"hr" }));
+
+    // per trip: onthoud welke ovPanel open is, zodat we kunnen sluiten
+    let openPanel = null;
 
     legs.forEach((l, idx)=>{
       const x = normLeg(l);
+
+      const originCode = (String(x.originCode||"").trim().toLowerCase()) || (OV_NAME_TO_CODE.get(normName(x.originName)) || "");
+      const destCode   = (String(x.destCode||"").trim().toLowerCase())   || (OV_NAME_TO_CODE.get(normName(x.destName)) || "");
+
+      const showOriginBtn = originCode && OV_STATIONS.has(originCode);
+      const showDestBtn   = destCode && OV_STATIONS.has(destCode);
+
       const legEl = document.createElement("div");
       legEl.className = "leg";
-      legEl.innerHTML = `
-        <div class="legTop">
-          <div>🚆 ${x.product}</div>
-          <div>${fmtTime(x.dep)} → ${fmtTime(x.arr)}</div>
-        </div>
-        <div class="legLine">
-          ${x.originName || "—"} (spoor ${x.depTrack ?? "?"}) → ${x.destName || "—"} (spoor ${x.arrTrack ?? "?"})
-          ${x.delayMin > 0 ? `<span class="delay"> +${x.delayMin} min</span>` : ""}
-        </div>
+
+      const line = document.createElement("div");
+      line.className = "legLine";
+      line.innerHTML = `
+        <span>${x.originName || "—"} (spoor ${x.depTrack ?? "?"})</span>
+        ${showOriginBtn ? `<button class="ovInlineBtn" data-ov="${originCode}" data-label="${x.originName||originCode}">OV</button>` : ""}
+        →
+        <span>${x.destName || "—"} (spoor ${x.arrTrack ?? "?"})</span>
+        ${showDestBtn ? `<button class="ovInlineBtn" data-ov="${destCode}" data-label="${x.destName||destCode}">OV</button>` : ""}
+        ${x.delayMin > 0 ? `<span class="delay"> +${x.delayMin} min</span>` : ""}
       `;
+
+      const top = document.createElement("div");
+      top.className = "legTop";
+      top.innerHTML = `
+        <div>🚆 ${x.product}</div>
+        <div>${fmtTime(x.dep)} → ${fmtTime(x.arr)}</div>
+      `;
+
+      // panel onder de regel
+      const panel = document.createElement("div");
+      panel.className = "ovPanel";
+      panel.style.display = "none";
+
+      legEl.appendChild(top);
+      legEl.appendChild(line);
+      legEl.appendChild(panel);
+
+      // click handlers
+      line.querySelectorAll("button.ovInlineBtn").forEach(btn=>{
+        btn.addEventListener("click", async (e)=>{
+          e.stopPropagation();
+          const code = btn.getAttribute("data-ov");
+          const label = btn.getAttribute("data-label") || code;
+
+          if (!code) return;
+
+          const isOpen = panel.style.display !== "none";
+
+          // sluit eventueel open panel (in deze trip)
+          if (openPanel && openPanel !== panel){
+            openPanel.style.display = "none";
+            openPanel.innerHTML = "";
+          }
+
+          if (isOpen){
+            panel.style.display = "none";
+            panel.innerHTML = "";
+            openPanel = null;
+            return;
+          }
+
+          panel.style.display = "block";
+          openPanel = panel;
+
+          await loadOvIntoPanel(panel, code, `Live OV bij ${label}`);
+        });
+      });
+
       details.appendChild(legEl);
 
       if (idx < legs.length - 1) {
-        const hr2 = document.createElement("div");
-        hr2.className = "hr";
-        details.appendChild(hr2);
+        details.appendChild(Object.assign(document.createElement("div"), { className:"hr" }));
       }
     });
   }
@@ -776,7 +933,6 @@ async function zoekReis(){
   humanErrorEl.textContent = "";
   resultaat.innerHTML = "";
 
-  // ✅ client-side check: zelfde station
   if (vanInput.value.trim().toLowerCase() === naarInput.value.trim().toLowerCase()) {
     humanErrorEl.textContent = "⚠️ Je hebt hetzelfde station gekozen bij vertrek en aankomst.";
     return;
@@ -804,9 +960,12 @@ async function zoekReis(){
 
     if (!vanCode || !naarCode) return alert("Kies stations uit de lijst (klik op een suggestie).");
 
-    const data = await fetchJson(`/reis-extreme-b?van=${encodeURIComponent(vanCode)}&naar=${encodeURIComponent(naarCode)}&datetime=${encodeURIComponent(dt)}`, { signal });
-    const opts = Array.isArray(data.options) ? data.options : [];
+    const data = await fetchJson(
+      `/reis-extreme-b?van=${encodeURIComponent(vanCode)}&naar=${encodeURIComponent(naarCode)}&datetime=${encodeURIComponent(dt)}`,
+      { signal }
+    );
 
+    const opts = Array.isArray(data.options) ? data.options : [];
     if (!opts.length) {
       resultaat.innerHTML = `<div class="resultCard">Geen opties gevonden.</div>`;
       return;
@@ -850,10 +1009,8 @@ wisselBtn.addEventListener("click", ()=>{
   persistStations();
 });
 
-/* =========================
-   FAVORIETE REIZEN (LOCALSTORAGE v1.06)
-   ========================= */
-const FAV_KEY = "planner_favorieten_v1"; // key blijft gelijk (geen dataverlies)
+/* FAVORIETE REIZEN (LOCALSTORAGE) */
+const FAV_KEY = "planner_favorieten_v1";
 const norm = (s) => String(s || "").trim().replace(/\s+/g, " ").toLowerCase();
 
 function getFavs() {
@@ -865,11 +1022,9 @@ function getFavs() {
     return [];
   }
 }
-
 function saveFavs(favs) {
   localStorage.setItem(FAV_KEY, JSON.stringify(favs));
 }
-
 function laadFavorieten() {
   const favs = getFavs();
   favDiv.innerHTML = "";
@@ -885,7 +1040,6 @@ function laadFavorieten() {
     const row = document.createElement("div");
     row.className = "favitem";
 
-    // veilig renderen (geen HTML inject via localStorage)
     const label = document.createElement("span");
     label.textContent = `${f.van} → ${f.naar}`;
 
@@ -903,7 +1057,7 @@ function laadFavorieten() {
     };
 
     del.onclick = () => {
-      const updated = favs.slice(); // gebruik huidige lijst (sneller)
+      const updated = favs.slice();
       updated.splice(i, 1);
       saveFavs(updated);
       laadFavorieten();
@@ -923,18 +1077,13 @@ favBtn.addEventListener("click", () => {
   if (!van || !naar) return alert("Vul van en naar in.");
 
   const favs = getFavs();
-
   const exists = favs.some((f) => norm(f.van) === norm(van) && norm(f.naar) === norm(naar));
-  if (exists) {
-    alert("Deze favoriete reis bestaat al.");
-    return;
-  }
+  if (exists) return alert("Deze favoriete reis bestaat al.");
 
   favs.push({ van, naar });
   saveFavs(favs);
   laadFavorieten();
 
-  // kleine UX feedback zonder extra UI
   const old = favBtn.textContent;
   favBtn.textContent = "✅ Opgeslagen";
   setTimeout(() => (favBtn.textContent = old), 900);
