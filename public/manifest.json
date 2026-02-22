@@ -2,7 +2,7 @@
   "name": "Toepoel's Reisplanner",
   "short_name": "Reisplanner",
   "description": "Snelle treinplanner met normale én extra korte overstappen, minimale overstaptijd en live OV-aansluitingen.",
-  "start_url": "/?source=pwa",
+  "start_url": "/?source=pwa&v=1.11",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",

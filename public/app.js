@@ -1,21 +1,21 @@
-/* Toepoel's Reisplanner — app.js (v1.09.1)
-   - Safari/iOS timezone parse fix voor OV + alle tijden
-   - behoudt alles: stations, zoeken, modes, favorieten + slepen, OV-panel, update banner
+/* Toepoel's Reisplanner — app.js (v1.11)
+   Focus: stability + performance + iOS/Safari time parsing + OV verbeteringen.
 */
 
 /* =========================
    VERSION
    ========================= */
 const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content || "onbekend";
+document.getElementById("appVersion")?.append?.(); // no-op for safety
 const appVersionEl = document.getElementById("appVersion");
 if (appVersionEl) appVersionEl.textContent = APP_VERSION;
 
 /* =========================
-   SAFARI TIME FIX (BELANGRIJK)
-   Safari heeft moeite met timezone +0100 (zonder :)
+   SAFARI TIME FIX
+   Safari parse issues with timezone like +0100 (needs +01:00)
    ========================= */
 function normalizeTZ(s){
-  return String(s || "").replace(/([+-]\d{2})(\d{2})$/, "$1:$2"); // +0100 -> +01:00
+  return String(s || "").replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
 }
 function safeParseTime(s){
   const x = normalizeTZ(s);
@@ -26,45 +26,6 @@ function safeDate(s){
   const t = safeParseTime(s);
   return Number.isFinite(t) ? new Date(t) : null;
 }
-
-/* =========================
-   STORAGE MIGRATIE
-   ========================= */
-const STORAGE_SCHEMA_KEY = "planner_storage_schema";
-const STORAGE_SCHEMA_CURRENT = 2;
-
-function migrateStorageIfNeeded(){
-  const raw = localStorage.getItem(STORAGE_SCHEMA_KEY);
-  const current = Number(raw || 0);
-
-  if (!current){
-    // v1.07 -> v2
-    const oldFavKey = "planner_favorieten_v1";
-    const newFavKey = "planner_favorieten_v2";
-
-    if (!localStorage.getItem(newFavKey) && localStorage.getItem(oldFavKey)){
-      try{
-        const old = JSON.parse(localStorage.getItem(oldFavKey) || "[]");
-        const mapped = Array.isArray(old)
-          ? old.map((f, idx)=>({
-              id: String(Date.now()) + "_" + idx,
-              van: String(f?.van || "").trim(),
-              naar: String(f?.naar || "").trim()
-            })).filter(x=>x.van && x.naar)
-          : [];
-        localStorage.setItem(newFavKey, JSON.stringify(mapped));
-      } catch {}
-    }
-
-    localStorage.setItem(STORAGE_SCHEMA_KEY, String(STORAGE_SCHEMA_CURRENT));
-    return;
-  }
-
-  if (current < STORAGE_SCHEMA_CURRENT){
-    localStorage.setItem(STORAGE_SCHEMA_KEY, String(STORAGE_SCHEMA_CURRENT));
-  }
-}
-migrateStorageIfNeeded();
 
 /* =========================
    HELPERS
@@ -89,12 +50,12 @@ function fmtHHMM(iso){
   if (!d) return "—";
   return d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
 }
+function debounce(fn, ms=200){
+  let t=null;
+  return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); };
+}
 function humanizeError(err){
   const msg = String(err?.message || err || "");
-
-  if (msg.includes("Vertrek- en aankomststation mogen niet hetzelfde zijn"))
-    return "⚠️ Je hebt hetzelfde station gekozen bij vertrek en aankomst.";
-
   if (!navigator.onLine) return "Je bent offline. Probeer later opnieuw.";
   if (msg.includes("HTTP 401") || msg.includes("HTTP 403")) return "NS API key werkt niet (toegang geweigerd).";
   if (msg.includes("HTTP 500") || msg.includes("HTTP 502") || msg.includes("HTTP 503")) return "NS API is tijdelijk niet bereikbaar.";
@@ -117,17 +78,13 @@ async function fetchJson(url, options){
   if (!data) throw new Error("Server gaf geen JSON terug");
   return data;
 }
-function debounce(fn, ms=200){
-  let t=null;
-  return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); };
-}
+function normName(x){ return (x||"").trim().toLowerCase(); }
 function transferClass(min){
   if (min === null || min === undefined) return "";
   if (min < 1) return "bad";
   if (min < 3) return "ok";
   return "good";
 }
-function normName(x){ return (x||"").trim().toLowerCase(); }
 
 /* Normalize leg */
 function normLeg(l){
@@ -183,44 +140,42 @@ function sortByStartTime(arr){
   return arr.sort((a,b)=> safeParseTime(a.depart) - safeParseTime(b.depart));
 }
 
-/* Fallback: NS trips -> options */
-function tripToOptionFromNS(trip){
-  const legs = Array.isArray(trip?.legs) ? trip.legs : [];
-  if (!legs.length) return null;
-
-  const depart = legs[0]?.origin?.plannedDateTime || null;
-  const arrive = legs[legs.length - 1]?.destination?.plannedDateTime || null;
-  if (!depart || !arrive) return null;
-
-  const depT = safeParseTime(depart);
-  const arrT = safeParseTime(arrive);
-  if (!Number.isFinite(depT) || !Number.isFinite(arrT)) return null;
-
-  const durationMin = Math.round((arrT - depT)/60000);
-
-  const mappedLegs = legs.map(l => ({
-    originName: l.origin?.name,
-    destName: l.destination?.name,
-    dep: l.origin?.plannedDateTime,
-    arr: l.destination?.plannedDateTime,
-    depTrack: l.origin?.plannedTrack ?? "?",
-    arrTrack: l.destination?.plannedTrack ?? "?",
-    delayMin: l.origin?.delayInMinutes ?? 0,
-    product: l.product?.longCategoryName || l.product?.shortCategoryName || "Trein"
-  }));
-
-  return { durationMin, depart, arrive, legs: mappedLegs };
-}
-
 /* =========================
-   STATE KEYS
+   STORAGE (favorieten migratie)
    ========================= */
-const LS = {
-  van:"last_van",
-  naar:"last_naar",
-  mode:"planner_mode",            // "extreme" | "normal"
-  searchType:"planner_searchType" // "depart" | "arrive"
-};
+const STORAGE_SCHEMA_KEY = "planner_storage_schema";
+const STORAGE_SCHEMA_CURRENT = 2;
+
+function migrateStorageIfNeeded(){
+  const raw = localStorage.getItem(STORAGE_SCHEMA_KEY);
+  const current = Number(raw || 0);
+
+  if (!current){
+    const oldFavKey = "planner_favorieten_v1";
+    const newFavKey = "planner_favorieten_v2";
+
+    if (!localStorage.getItem(newFavKey) && localStorage.getItem(oldFavKey)){
+      try{
+        const old = JSON.parse(localStorage.getItem(oldFavKey) || "[]");
+        const mapped = Array.isArray(old)
+          ? old.map((f, idx)=>({
+              id: String(Date.now()) + "_" + idx,
+              van: String(f?.van || "").trim(),
+              naar: String(f?.naar || "").trim()
+            })).filter(x=>x.van && x.naar)
+          : [];
+        localStorage.setItem(newFavKey, JSON.stringify(mapped));
+      } catch {}
+    }
+    localStorage.setItem(STORAGE_SCHEMA_KEY, String(STORAGE_SCHEMA_CURRENT));
+    return;
+  }
+
+  if (current < STORAGE_SCHEMA_CURRENT){
+    localStorage.setItem(STORAGE_SCHEMA_KEY, String(STORAGE_SCHEMA_CURRENT));
+  }
+}
+migrateStorageIfNeeded();
 
 /* =========================
    ELEMENTS
@@ -245,11 +200,19 @@ const modeNormalBtn = document.getElementById("modeNormal");
 const modeExtremeBtn = document.getElementById("modeExtreme");
 
 /* =========================
+   STATE KEYS
+   ========================= */
+const LS = {
+  van:"last_van",
+  naar:"last_naar",
+  mode:"planner_mode",            // "extreme" | "normal"
+  searchType:"planner_searchType" // "depart" | "arrive"
+};
+
+/* =========================
    MOBILE: keyboard dismiss
    ========================= */
-function dismissKeyboard(){
-  document.activeElement?.blur?.();
-}
+function dismissKeyboard(){ document.activeElement?.blur?.(); }
 document.addEventListener("touchstart", (e) => {
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.closest?.("button"))) return;
@@ -261,50 +224,59 @@ document.addEventListener("click", (e) => {
   dismissKeyboard();
 });
 
-/* date fully clickable */
+/* date picker */
 dateInput?.addEventListener("click", ()=>{
   if (dateInput.showPicker) dateInput.showPicker();
   else dateInput.focus();
 });
 
 /* fill time selects */
-for(let h=0; h<24; h++){
-  const o=document.createElement("option");
-  o.value=pad2(h); o.textContent=pad2(h);
-  hourSelect.appendChild(o);
-}
-for(let m=0; m<60; m+=5){
-  const o=document.createElement("option");
-  o.value=pad2(m); o.textContent=pad2(m);
-  minuteSelect.appendChild(o);
+if (hourSelect && minuteSelect){
+  hourSelect.innerHTML = "";
+  minuteSelect.innerHTML = "";
+  for(let h=0; h<24; h++){
+    const o=document.createElement("option");
+    o.value=pad2(h); o.textContent=pad2(h);
+    hourSelect.appendChild(o);
+  }
+  for(let m=0; m<60; m+=5){
+    const o=document.createElement("option");
+    o.value=pad2(m); o.textContent=pad2(m);
+    minuteSelect.appendChild(o);
+  }
 }
 
 /* load saved inputs */
-vanInput.value = localStorage.getItem(LS.van) || "";
-naarInput.value = localStorage.getItem(LS.naar) || "";
+if (vanInput) vanInput.value = localStorage.getItem(LS.van) || "";
+if (naarInput) naarInput.value = localStorage.getItem(LS.naar) || "";
 
-/* ✅ Datum/tijd bij start altijd NU */
-const now = roundTo5Min(new Date());
-dateInput.value = localISODate(now);
-hourSelect.value = pad2(now.getHours());
-minuteSelect.value = pad2(now.getMinutes());
+/* set default date/time = now */
+if (dateInput && hourSelect && minuteSelect){
+  const now = roundTo5Min(new Date());
+  dateInput.value = localISODate(now);
+  hourSelect.value = pad2(now.getHours());
+  minuteSelect.value = pad2(now.getMinutes());
+}
 
-/* search type restore */
-searchTypeEl.value = localStorage.getItem(LS.searchType) || "depart";
-searchTypeEl.addEventListener("change", ()=> localStorage.setItem(LS.searchType, searchTypeEl.value));
+/* restore search type */
+if (searchTypeEl){
+  searchTypeEl.value = localStorage.getItem(LS.searchType) || "depart";
+  searchTypeEl.addEventListener("change", ()=> localStorage.setItem(LS.searchType, searchTypeEl.value));
+}
 
+/* persist stations */
 function persistStations(){
-  localStorage.setItem(LS.van, vanInput.value);
-  localStorage.setItem(LS.naar, naarInput.value);
+  if (vanInput) localStorage.setItem(LS.van, vanInput.value);
+  if (naarInput) localStorage.setItem(LS.naar, naarInput.value);
 }
 ["input","change"].forEach(evt=>{
-  vanInput.addEventListener(evt, persistStations);
-  naarInput.addEventListener(evt, persistStations);
+  vanInput?.addEventListener(evt, persistStations);
+  naarInput?.addEventListener(evt, persistStations);
 });
 
-/* click-to-clear stations */
+/* click-to-clear */
 function clearOnClick(el, key){
-  el.addEventListener("click", ()=>{
+  el?.addEventListener("click", ()=>{
     if (el.value.trim()) {
       el.value = "";
       localStorage.setItem(key,"");
@@ -315,48 +287,63 @@ clearOnClick(vanInput, LS.van);
 clearOnClick(naarInput, LS.naar);
 
 /* =========================
-   MODE (standaard extreme)
-   + ondersteunt ?mode=normal/extreme (handig voor manifest shortcuts)
+   MODE (normal/extreme)
+   Supports ?mode=normal/extreme
    ========================= */
 function setMode(mode){
   const m = (mode === "normal") ? "normal" : "extreme";
   localStorage.setItem(LS.mode, m);
 
-  modeNormalBtn.classList.toggle("active", m === "normal");
-  modeExtremeBtn.classList.toggle("active", m === "extreme");
+  modeNormalBtn?.classList.toggle("active", m === "normal");
+  modeExtremeBtn?.classList.toggle("active", m === "extreme");
 
   const hc = document.querySelector(".headerControls");
   if (hc) hc.textContent = (m === "extreme") ? "⚡ Extra korte overstappen" : "✅ Normale overstappen";
 }
-
 (function initMode(){
   const urlMode = new URLSearchParams(location.search).get("mode");
   if (urlMode === "normal" || urlMode === "extreme"){
     setMode(urlMode);
-    return;
+  } else {
+    setMode(localStorage.getItem(LS.mode) || "extreme");
   }
-  setMode(localStorage.getItem(LS.mode) || "extreme");
 })();
+modeNormalBtn?.addEventListener("click", ()=> setMode("normal"));
+modeExtremeBtn?.addEventListener("click", ()=> setMode("extreme"));
 
-modeNormalBtn.addEventListener("click", ()=> setMode("normal"));
-modeExtremeBtn.addEventListener("click", ()=> setMode("extreme"));
+function getMode(){
+  return localStorage.getItem(LS.mode) === "normal" ? "normal" : "extreme";
+}
+
+/* swap */
+wisselBtnIcon?.addEventListener("click", ()=>{
+  if (!vanInput || !naarInput) return;
+  const t = vanInput.value;
+  vanInput.value = naarInput.value;
+  naarInput.value = t;
+  persistStations();
+});
 
 /* =========================
    AUTOCOMPLETE (min 2 letters)
+   - crash-proof
+   - hints on errors
    ========================= */
 let vanList = [];
 let naarList = [];
-const stationCache = new Map(); // key: which:query -> array
+
+const stationCache = new Map(); // key -> array
 let stationAbortVan = null;
 let stationAbortNaar = null;
 
 function setHint(which, text){
-  if (which === "van") vanHint.textContent = text || "";
-  if (which === "naar") naarHint.textContent = text || "";
+  if (which === "van" && vanHint) vanHint.textContent = text || "";
+  if (which === "naar" && naarHint) naarHint.textContent = text || "";
 }
 
 async function loadStations(q, listEl, store, which){
   const query = (q || "").trim();
+
   if (query.length < 2) {
     listEl.innerHTML = "";
     store.length = 0;
@@ -377,37 +364,42 @@ async function loadStations(q, listEl, store, which){
       listEl.appendChild(opt);
       store.push(s);
     });
+    if (!store.length) setHint(which, "Geen stations gevonden. Controleer spelling.");
     return;
   }
 
+  // abort previous request for this field
+  const ctrl = new AbortController();
   if (which === "van"){
-    if (stationAbortVan) stationAbortVan.abort();
-    stationAbortVan = new AbortController();
+    stationAbortVan?.abort?.();
+    stationAbortVan = ctrl;
   } else {
-    if (stationAbortNaar) stationAbortNaar.abort();
-    stationAbortNaar = new AbortController();
+    stationAbortNaar?.abort?.();
+    stationAbortNaar = ctrl;
   }
-  const signal = (which === "van") ? stationAbortVan.signal : stationAbortNaar.signal;
 
-  const data = await fetchJson(`/stations?q=${encodeURIComponent(query)}`, { signal });
-  stationCache.set(key, data || []);
+  try{
+    const data = await fetchJson(`/stations?q=${encodeURIComponent(query)}`, { signal: ctrl.signal });
+    stationCache.set(key, data || []);
 
-  listEl.innerHTML = "";
-  store.length = 0;
-  (data||[]).forEach(s=>{
-    const opt=document.createElement("option");
-    opt.value = s.namen.lang;
-    listEl.appendChild(opt);
-    store.push(s);
-  });
+    listEl.innerHTML = "";
+    store.length = 0;
+    (data||[]).forEach(s=>{
+      const opt=document.createElement("option");
+      opt.value = s.namen.lang;
+      listEl.appendChild(opt);
+      store.push(s);
+    });
 
-  if (!store.length){
-    setHint(which, "Geen stations gevonden. Controleer spelling.");
+    if (!store.length) setHint(which, "Geen stations gevonden. Controleer spelling.");
+  } catch(e){
+    const msg = humanizeError(e);
+    if (msg) setHint(which, msg);
   }
 }
 
-vanInput.addEventListener("input", debounce(()=>loadStations(vanInput.value, stationsVan, vanList, "van"), 200));
-naarInput.addEventListener("input", debounce(()=>loadStations(naarInput.value, stationsNaar, naarList, "naar"), 200));
+vanInput?.addEventListener("input", debounce(()=>loadStations(vanInput.value, stationsVan, vanList, "van"), 220));
+naarInput?.addEventListener("input", debounce(()=>loadStations(naarInput.value, stationsNaar, naarList, "naar"), 220));
 
 async function resolveCode(name, store, which){
   const wanted = normName(name);
@@ -425,14 +417,18 @@ async function resolveCode(name, store, which){
     return null;
   }
 
-  const data = await fetchJson(`/stations?q=${encodeURIComponent(name)}`);
-  const exact = (data||[]).find(s=> normName(s.namen.lang) === wanted);
-
-  if (!exact){
-    setHint(which, "Kies een station uit de lijst (klik op een suggestie).");
+  try{
+    const data = await fetchJson(`/stations?q=${encodeURIComponent(name)}`);
+    const exact = (data||[]).find(s=> normName(s.namen.lang) === wanted);
+    if (!exact){
+      setHint(which, "Kies een station uit de lijst (klik op een suggestie).");
+      return null;
+    }
+    return exact.code;
+  } catch(e){
+    setHint(which, humanizeError(e));
     return null;
   }
-  return exact.code;
 }
 
 function validateStationInput(el, store, which){
@@ -446,31 +442,29 @@ function validateStationInput(el, store, which){
     setHint(which, "");
   }
 }
-vanInput.addEventListener("blur", ()=>validateStationInput(vanInput, vanList, "van"));
-naarInput.addEventListener("blur", ()=>validateStationInput(naarInput, naarList, "naar"));
+vanInput?.addEventListener("blur", ()=>validateStationInput(vanInput, vanList, "van"));
+naarInput?.addEventListener("blur", ()=>validateStationInput(naarInput, naarList, "naar"));
 
 function buildDateTime(){
   return `${dateInput.value}T${hourSelect.value}:${minuteSelect.value}`;
 }
 
-/* Wissel (icoon) */
-wisselBtnIcon.addEventListener("click", ()=>{
-  const t = vanInput.value;
-  vanInput.value = naarInput.value;
-  naarInput.value = t;
-  persistStations();
-});
-
 /* =========================
-   OV (arrival-only) mapping
+   OV helpers
+   - multiple buttons for Dordrecht
    ========================= */
-const OV_CODE_BY_NAME = new Map([
-  ["dordrecht", "ddr"],
-  ["dordrecht zuid", "ddzd"],
-  ["rotterdam blaak", "rtb"],
-  ["rotterdam centraal", "rtd"],
-  ["den haag hs", "gvh"],
-  ["den haag centraal", "gvc"]
+const OV_BUTTONS_BY_DEST = new Map([
+  // Dordrecht: 2 knoppen
+  ["dordrecht", [
+    { code: "ddr", label: "OV stad" },
+    { code: "ddr_streek", label: "OV streek" }
+  ]],
+  ["dordrecht zuid", [{ code: "ddzd", label: "OV" }]],
+  ["zwijndrecht", [{ code: "zwnd", label: "OV" }]],
+  ["rotterdam blaak", [{ code: "rtb", label: "OV" }]],
+  ["rotterdam centraal", [{ code: "rtd", label: "OV" }]],
+  ["den haag hs", [{ code: "gvh", label: "OV" }]],
+  ["den haag centraal", [{ code: "gvc", label: "OV" }]],
 ]);
 
 function classifyOvTransfer(min){
@@ -479,7 +473,6 @@ function classifyOvTransfer(min){
   if (min < 6) return "ok";
   return "good";
 }
-
 function ovIcon(type){
   const t = String(type || "").toUpperCase();
   if (t.includes("METRO")) return "🚇";
@@ -487,7 +480,7 @@ function ovIcon(type){
   return "🚌";
 }
 
-/* Render OV list with transfer time; hide negative + max 30 min */
+/* Render OV list with fallback 0-30 -> 0-60 -> next 10 */
 function renderOvPanel(panelEl, title, ovData, trainArrIso){
   panelEl.innerHTML = "";
 
@@ -499,74 +492,107 @@ function renderOvPanel(panelEl, title, ovData, trainArrIso){
   const trainArrT = safeParseTime(trainArrIso || "");
   const deps = Array.isArray(ovData?.departures) ? ovData.departures : [];
 
-  let shown = 0;
-
-  deps.slice(0, 30).forEach(d => {
-    const depIso = d.expectedTime || d.plannedTime;
-    const depT = safeParseTime(depIso || "");
-    if (!Number.isFinite(depT) || !Number.isFinite(trainArrT)) return;
-
-    const transferMin = Math.round((depT - trainArrT) / 60000);
-
-    if (transferMin < 0) return;
-    if (transferMin > 30) return;
-
-    shown++;
-
-    const row = document.createElement("div");
-    row.className = "ovItem";
-
-    const left = document.createElement("div");
-    left.className = "ovLeft";
-    left.textContent = `${ovIcon(d.transportType)} ${d.line || ""}`.trim();
-
-    const mid = document.createElement("div");
-    mid.className = "ovMid";
-    mid.textContent = d.destination || d.stopName || "";
-
-    const right = document.createElement("div");
-    right.className = "ovRight";
-    right.textContent = fmtHHMM(depIso);
-
-    if (Number(d.delayMin) > 0) {
-      const dl = document.createElement("span");
-      dl.className = "ovDelay";
-      dl.textContent = `+${d.delayMin}`;
-      right.appendChild(dl);
-    }
-
-    const badge = document.createElement("span");
-    badge.className = `ovTransfer ${classifyOvTransfer(transferMin)}`;
-    badge.textContent = `overstap ${transferMin} min`;
-
-    row.appendChild(left);
-    row.appendChild(mid);
-    row.appendChild(right);
-    row.appendChild(badge);
-
-    panelEl.appendChild(row);
-  });
-
-  if (shown === 0){
+  if (!Number.isFinite(trainArrT)){
     const msg = document.createElement("div");
     msg.className = "small";
     msg.style.marginTop = "6px";
-    msg.textContent = "Geen haalbare OV-vertrektijden binnen 30 minuten na aankomst van de trein.";
+    msg.textContent = "OV fout: aankomsttijd kon niet worden gelezen.";
     panelEl.appendChild(msg);
+    return;
   }
 
-  const foot = document.createElement("div");
-  foot.className = "small";
-  foot.style.marginTop = "8px";
-  foot.innerHTML = `Trein aankomst: <b>${fmtTime(trainArrIso)}</b><br>OV filter: 0–30 min`;
-  panelEl.appendChild(foot);
+  function renderWithWindow(maxMin, labelText){
+    let shown = 0;
+    const MAX_ROWS = 10;
+
+    deps.slice(0, 80).forEach(d => {
+      if (shown >= MAX_ROWS) return;
+
+      const depIso = d.expectedTime || d.plannedTime;
+      const depT = safeParseTime(depIso || "");
+      if (!Number.isFinite(depT)) return;
+
+      const transferMin = Math.round((depT - trainArrT) / 60000);
+      if (transferMin < 0) return;
+      if (Number.isFinite(maxMin) && transferMin > maxMin) return;
+
+      shown++;
+
+      const row = document.createElement("div");
+      row.className = "ovItem";
+
+      const left = document.createElement("div");
+      left.className = "ovLeft";
+      left.textContent = `${ovIcon(d.transportType)} ${d.line || ""}`.trim();
+
+      const mid = document.createElement("div");
+      mid.className = "ovMid";
+      mid.textContent = d.destination || d.stopName || "";
+
+      const right = document.createElement("div");
+      right.className = "ovRight";
+      right.textContent = fmtHHMM(depIso);
+
+      if (Number(d.delayMin) > 0) {
+        const dl = document.createElement("span");
+        dl.className = "ovDelay";
+        dl.textContent = `+${d.delayMin}`;
+        right.appendChild(dl);
+      }
+
+      const badge = document.createElement("span");
+      badge.className = `ovTransfer ${classifyOvTransfer(transferMin)}`;
+      badge.textContent = `overstap ${transferMin} min`;
+
+      row.appendChild(left);
+      row.appendChild(mid);
+      row.appendChild(right);
+      row.appendChild(badge);
+
+      panelEl.appendChild(row);
+    });
+
+    const foot = document.createElement("div");
+    foot.className = "small";
+    foot.style.marginTop = "8px";
+    foot.innerHTML = `Trein aankomst: <b>${fmtTime(trainArrIso)}</b><br>${labelText}`;
+    panelEl.appendChild(foot);
+
+    return shown;
+  }
+
+  const shown30 = renderWithWindow(30, "OV filter: 0–30 min");
+  if (shown30 > 0) return;
+
+  panelEl.innerHTML = "";
+  panelEl.appendChild(head);
+  const shown60 = renderWithWindow(60, "Geen OV binnen 30 min — uitgebreid naar 0–60 min");
+  if (shown60 > 0) return;
+
+  panelEl.innerHTML = "";
+  panelEl.appendChild(head);
+  const shownNext = renderWithWindow(null, "Geen OV binnen 60 min — dit zijn de eerstvolgende ritten na aankomst");
+  if (shownNext === 0){
+    const msg = document.createElement("div");
+    msg.className = "small";
+    msg.style.marginTop = "6px";
+    msg.textContent = "Geen OV-vertrektijden gevonden na aankomst.";
+    panelEl.appendChild(msg);
+
+    const foot = document.createElement("div");
+    foot.className = "small";
+    foot.style.marginTop = "8px";
+    foot.innerHTML = `Trein aankomst: <b>${fmtTime(trainArrIso)}</b>`;
+    panelEl.appendChild(foot);
+  }
 }
 
 async function loadOv(panelEl, stationCode, title, trainArrIso){
   panelEl.innerHTML = `<div class="small">Laden…</div>`;
   try{
-    // cache-bust om zeker te zijn (ook handig bij proxies)
-    const url = `/ov/by-station?station=${encodeURIComponent(stationCode)}&v=${encodeURIComponent(APP_VERSION)}&t=${Date.now()}`;
+    // optionele server-side filtering:
+    const after = normalizeTZ(trainArrIso || "");
+    const url = `/ov/by-station?station=${encodeURIComponent(stationCode)}&after=${encodeURIComponent(after)}&limit=30&t=${Date.now()}`;
     const data = await fetchJson(url);
     renderOvPanel(panelEl, title, data, trainArrIso);
   } catch(e){
@@ -575,7 +601,7 @@ async function loadOv(panelEl, stationCode, title, trainArrIso){
 }
 
 /* =========================
-   TRIP UI
+   Trip card render
    ========================= */
 function renderExpandableTrip(opt){
   const card = document.createElement("div");
@@ -637,19 +663,15 @@ function renderExpandableTrip(opt){
       details.appendChild(tl);
     }
 
-    const hr = document.createElement("div");
-    hr.className = "hr";
-    details.appendChild(hr);
+    details.appendChild(Object.assign(document.createElement("div"), { className:"hr" }));
 
-    // Per trip: maar 1 OV paneel open tegelijk
     let openPanel = null;
 
     legs.forEach((l, idx)=>{
       const x = normLeg(l);
-
-      const destNameNorm = normName(x.destName || "");
-      const ovCode = OV_CODE_BY_NAME.get(destNameNorm) || null;
-      const showOv = Boolean(ovCode && x.arr);
+      const destNorm = normName(x.destName || "");
+      const btns = OV_BUTTONS_BY_DEST.get(destNorm) || null;
+      const showOv = Boolean(btns && btns.length && x.arr);
 
       const legEl = document.createElement("div");
       legEl.className = "leg";
@@ -669,37 +691,39 @@ function renderExpandableTrip(opt){
       `;
 
       if (showOv){
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "ovBtn";
-        btn.textContent = "OV";
-        legLine.appendChild(btn);
+        btns.forEach(({code,label})=>{
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "ovBtn";
+          btn.textContent = label || "OV";
+          legLine.appendChild(btn);
 
-        const panel = document.createElement("div");
-        panel.className = "ovPanel";
-        panel.style.display = "none";
-        legEl.appendChild(panel);
+          const panel = document.createElement("div");
+          panel.className = "ovPanel";
+          panel.style.display = "none";
+          legEl.appendChild(panel);
 
-        btn.addEventListener("click", async (e)=>{
-          e.stopPropagation();
+          btn.addEventListener("click", async (e)=>{
+            e.stopPropagation();
 
-          if (openPanel && openPanel !== panel){
-            openPanel.style.display = "none";
-            openPanel.innerHTML = "";
-          }
+            if (openPanel && openPanel !== panel){
+              openPanel.style.display = "none";
+              openPanel.innerHTML = "";
+            }
 
-          const isOpen = panel.style.display !== "none";
-          if (isOpen){
-            panel.style.display = "none";
-            panel.innerHTML = "";
-            openPanel = null;
-            return;
-          }
+            const isOpen = panel.style.display !== "none";
+            if (isOpen){
+              panel.style.display = "none";
+              panel.innerHTML = "";
+              openPanel = null;
+              return;
+            }
 
-          panel.style.display = "block";
-          openPanel = panel;
+            panel.style.display = "block";
+            openPanel = panel;
 
-          await loadOv(panel, ovCode, `Live OV bij ${x.destName}`, x.arr);
+            await loadOv(panel, code, `Live ${label || "OV"} bij ${x.destName}`, x.arr);
+          });
         });
       }
 
@@ -707,11 +731,7 @@ function renderExpandableTrip(opt){
       legEl.appendChild(legLine);
       details.appendChild(legEl);
 
-      if (idx < legs.length - 1) {
-        const hr2 = document.createElement("div");
-        hr2.className = "hr";
-        details.appendChild(hr2);
-      }
+      if (idx < legs.length - 1) details.appendChild(Object.assign(document.createElement("div"), { className:"hr" }));
     });
   }
 
@@ -734,35 +754,65 @@ const EXTREME_ENDPOINT = "/reis-extreme-b";
 const NORMAL_ENDPOINT  = "/reis";
 let inFlightSearch = null;
 
-function getMode(){
-  return localStorage.getItem(LS.mode) === "normal" ? "normal" : "extreme";
+function tripToOptionFromNS(trip){
+  const legs = Array.isArray(trip?.legs) ? trip.legs : [];
+  if (!legs.length) return null;
+
+  const depart = legs[0]?.origin?.plannedDateTime || null;
+  const arrive = legs[legs.length - 1]?.destination?.plannedDateTime || null;
+  if (!depart || !arrive) return null;
+
+  const depT = safeParseTime(depart);
+  const arrT = safeParseTime(arrive);
+  if (!Number.isFinite(depT) || !Number.isFinite(arrT)) return null;
+
+  const durationMin = Math.round((arrT - depT)/60000);
+
+  const mappedLegs = legs.map(l => ({
+    originName: l.origin?.name,
+    destName: l.destination?.name,
+    dep: l.origin?.plannedDateTime,
+    arr: l.destination?.plannedDateTime,
+    depTrack: l.origin?.plannedTrack ?? "?",
+    arrTrack: l.destination?.plannedTrack ?? "?",
+    delayMin: l.origin?.delayInMinutes ?? 0,
+    product: l.product?.longCategoryName || l.product?.shortCategoryName || "Trein"
+  }));
+
+  return { durationMin, depart, arrive, legs: mappedLegs };
+}
+
+function setSearching(on){
+  if (!zoekBtn) return;
+  zoekBtn.disabled = on;
+  zoekBtn.textContent = on ? "Zoeken…" : "Zoek reis";
 }
 
 async function zoekReis(){
-  humanErrorEl.textContent = "";
-  resultaat.innerHTML = "";
+  if (humanErrorEl) humanErrorEl.textContent = "";
+  if (resultaat) resultaat.innerHTML = "";
+
+  if (!vanInput || !naarInput || !dateInput || !hourSelect || !minuteSelect) return;
 
   if (vanInput.value.trim().toLowerCase() === naarInput.value.trim().toLowerCase()) {
-    humanErrorEl.textContent = "⚠️ Je hebt hetzelfde station gekozen bij vertrek en aankomst.";
+    if (humanErrorEl) humanErrorEl.textContent = "⚠️ Je hebt hetzelfde station gekozen bij vertrek en aankomst.";
     return;
   }
 
-  if (inFlightSearch) inFlightSearch.abort();
+  inFlightSearch?.abort?.();
   inFlightSearch = new AbortController();
-  const signal = inFlightSearch.signal;
 
   try{
     const vanName = vanInput.value.trim();
     const naarName = naarInput.value.trim();
     const dt = buildDateTime();
-    const searchType = searchTypeEl.value;
+    const searchType = searchTypeEl?.value || "depart";
     const searchForArrival = (searchType === "arrive");
 
-    if (!vanName || !naarName) { humanErrorEl.textContent = "Vul van en naar in."; return; }
-    if (!dt) { humanErrorEl.textContent = "Kies datum/tijd."; return; }
+    if (!vanName || !naarName) { if (humanErrorEl) humanErrorEl.textContent = "Vul van en naar in."; return; }
+    if (!dt) { if (humanErrorEl) humanErrorEl.textContent = "Kies datum/tijd."; return; }
 
-    zoekBtn.disabled = true;
-    zoekBtn.textContent = "Zoeken…";
+    setSearching(true);
 
     const [vanCode, naarCode] = await Promise.all([
       resolveCode(vanName, vanList, "van"),
@@ -770,24 +820,28 @@ async function zoekReis(){
     ]);
 
     if (!vanCode || !naarCode) {
-      humanErrorEl.textContent = "⚠️ Kies stations uit de lijst (klik op een suggestie).";
+      if (humanErrorEl) humanErrorEl.textContent = "⚠️ Kies stations uit de lijst (klik op een suggestie).";
       return;
     }
 
     const endpoint = (getMode() === "normal") ? NORMAL_ENDPOINT : EXTREME_ENDPOINT;
+
     const url =
       `${endpoint}?van=${encodeURIComponent(vanCode)}&naar=${encodeURIComponent(naarCode)}&datetime=${encodeURIComponent(dt)}&searchForArrival=${encodeURIComponent(String(searchForArrival))}`;
 
-    const data = await fetchJson(url, { signal });
+    // lightweight loading card
+    if (resultaat){
+      resultaat.innerHTML = `<div class="resultCard">Zoeken…</div>`;
+    }
+
+    const data = await fetchJson(url, { signal: inFlightSearch.signal });
 
     let opts = Array.isArray(data?.options) ? data.options : null;
-    if (!opts && Array.isArray(data?.trips)){
-      opts = data.trips.map(tripToOptionFromNS).filter(Boolean);
-    }
+    if (!opts && Array.isArray(data?.trips)) opts = data.trips.map(tripToOptionFromNS).filter(Boolean);
     if (!Array.isArray(opts)) opts = [];
 
     if (!opts.length) {
-      resultaat.innerHTML = `<div class="resultCard">Geen opties gevonden.</div>`;
+      if (resultaat) resultaat.innerHTML = `<div class="resultCard">Geen opties gevonden.</div>`;
       return;
     }
 
@@ -796,33 +850,33 @@ async function zoekReis(){
     });
 
     const frag = document.createDocumentFragment();
-    sortByStartTime(opts).forEach(o=>{
-      frag.appendChild(renderExpandableTrip(o));
-    });
-    resultaat.appendChild(frag);
+    sortByStartTime(opts).forEach(o=> frag.appendChild(renderExpandableTrip(o)));
 
+    if (resultaat){
+      resultaat.innerHTML = "";
+      resultaat.appendChild(frag);
+    }
   } catch(e){
     const msg = humanizeError(e);
     if (msg) {
-      humanErrorEl.textContent = msg;
-      resultaat.innerHTML = `<div class="resultCard">${msg}</div>`;
+      if (humanErrorEl) humanErrorEl.textContent = msg;
+      if (resultaat) resultaat.innerHTML = `<div class="resultCard">${msg}</div>`;
     }
   } finally{
-    zoekBtn.disabled = false;
-    zoekBtn.textContent = "Zoek reis";
+    setSearching(false);
   }
 }
 
 /* Enter = zoeken */
 [vanInput, naarInput, dateInput, hourSelect, minuteSelect, searchTypeEl].forEach(el=>{
-  el.addEventListener("keydown",(e)=>{
+  el?.addEventListener("keydown",(e)=>{
     if (e.key==="Enter"){ e.preventDefault(); zoekReis(); }
   });
 });
-zoekBtn.addEventListener("click", zoekReis);
+zoekBtn?.addEventListener("click", zoekReis);
 
 /* =========================
-   FAVORIETEN (LOCALSTORAGE v2) + SLEPEN/SORTEREN
+   FAVORIETEN (LOCALSTORAGE v2) + DRAG SORT
    ========================= */
 const FAV_KEY = "planner_favorieten_v2";
 
@@ -847,6 +901,7 @@ function moveItem(arr, from, to){
 let dragIndex = null;
 
 function laadFavorieten() {
+  if (!favDiv) return;
   const favs = getFavs();
   favDiv.innerHTML = "";
 
@@ -956,9 +1011,9 @@ function laadFavorieten() {
   favDiv.appendChild(frag);
 }
 
-favBtn.addEventListener("click", () => {
-  const van = vanInput.value.trim();
-  const naar = naarInput.value.trim();
+favBtn?.addEventListener("click", () => {
+  const van = vanInput?.value?.trim?.() || "";
+  const naar = naarInput?.value?.trim?.() || "";
   if (!van || !naar) { alert("Vul van en naar in."); return; }
 
   const favs = getFavs();
@@ -979,7 +1034,7 @@ favBtn.addEventListener("click", () => {
 laadFavorieten();
 
 /* =========================
-   PWA: update-melding + herladen
+   PWA update banner
    ========================= */
 const updateBanner = document.getElementById("updateBanner");
 const reloadBtn = document.getElementById("reloadBtn");
@@ -988,7 +1043,7 @@ let swReg = null;
 function showUpdateBanner(){ if (updateBanner) updateBanner.style.display = "block"; }
 function hideUpdateBanner(){ if (updateBanner) updateBanner.style.display = "none"; }
 
-reloadBtn?.addEventListener("click", async ()=>{
+reloadBtn?.addEventListener("click", ()=>{
   if (swReg?.waiting){
     try{ swReg.waiting.postMessage({ type: "SKIP_WAITING" }); } catch {}
   } else {
@@ -999,6 +1054,7 @@ reloadBtn?.addEventListener("click", async ()=>{
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").then((reg)=>{
     swReg = reg;
+
     if (reg.waiting) showUpdateBanner();
 
     reg.addEventListener("updatefound", ()=>{
@@ -1018,4 +1074,4 @@ if ("serviceWorker" in navigator) {
   });
 }
 
-console.log("Toepoel's Planner app.js loaded", APP_VERSION);
+console.log("✅ Toepoel's Planner app.js loaded", APP_VERSION);
