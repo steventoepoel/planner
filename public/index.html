@@ -9,7 +9,7 @@
   <link rel="canonical" href="https://www.toepoels.nl/" />
 
   <!-- ✅ Versie -->
-  <meta name="app-version" content="1.13" />
+  <meta name="app-version" content="1.13.1" />
 
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json" />
@@ -21,15 +21,15 @@
   <meta property="og:type" content="website" />
   <meta property="og:title" content="Toepoel's Reisplanner" />
   <meta property="og:description" content="Reisplanner met alle overstappen — normaal of extra korte overstappen." />
-  <meta property="og:image" content="/toepoels_planner_optimized.webp" />
+  <meta property="og:image" content="https://www.toepoels.nl/toepoels_planner_optimized.webp" />
   <meta property="og:image:type" content="image/webp" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Toepoel's Reisplanner" />
   <meta name="twitter:description" content="Reisplanner met alle overstappen — normaal of extra korte overstappen." />
-  <meta name="twitter:image" content="/toepoels_planner_optimized.webp" />
+  <meta name="twitter:image" content="https://www.toepoels.nl/toepoels_planner_optimized.webp" />
 
   <!-- CSS -->
-  <link rel="stylesheet" href="/styles.css?v=1.13" />
+  <link rel="stylesheet" href="/styles.css?v=1.13.1" />
 </head>
 
 <body>
@@ -45,7 +45,6 @@
 
         <!-- ✅ modus knoppen -->
         <div class="modeWrap">
-          <!-- je wilde 'Modus' weg op mobiel → regel dat in CSS -->
           <div class="modeLabel" id="modeLabel">Modus</div>
           <div class="segment" role="group" aria-label="Kies modus">
             <button id="modeNormal" class="segmentBtn" type="button">Normale overstappen</button>
@@ -54,7 +53,6 @@
         </div>
       </div>
 
-      <!-- desktop hint (optioneel, app.js vult dit) -->
       <div class="headerControls" title="Standaard: Extra korte overstappen">
         ⚡ Extra korte overstappen
       </div>
@@ -65,11 +63,9 @@
 <div class="container safe">
   <div class="card">
 
-    <!-- VAN + wisselknop naast velden -->
     <label for="van">Van</label>
     <div class="stationRow">
       <input id="van" list="stationsVan" placeholder="Typ station (min. 2 letters)" autocomplete="off" />
-      <!-- ✅ wisselknop die jouw app.js verwacht -->
       <button id="wisselBtnIcon" class="swapIconBtn" type="button" title="Wissel">⇄</button>
     </div>
     <datalist id="stationsVan"></datalist>
@@ -80,7 +76,7 @@
     <datalist id="stationsNaar"></datalist>
     <div class="small" id="naarHint" style="margin-top:6px;"></div>
 
-    <label>Datum & tijd</label>
+    <label>Datum &amp; tijd</label>
     <div class="datetimeRow">
       <div class="col">
         <input type="date" id="dateInput" />
@@ -103,7 +99,7 @@
     </div>
 
     <div class="row">
-      <button id="favBtn" type="button" class="favBtn">⭐ <span>Bewaar favoriet</span></button>
+      <button id="favBtn" type="button" class="favBtn"><span class="star">⭐</span><span>Bewaar favoriet</span></button>
     </div>
 
     <div class="small" id="humanError" style="margin-top:10px;"></div>
@@ -118,7 +114,6 @@
   <div id="resultaat"></div>
 </div>
 
-<!-- ✅ update melding -->
 <div class="updateBanner safe" id="updateBanner" role="status" aria-live="polite">
   <div class="top">
     <div>
@@ -136,8 +131,6 @@
   <div>Versie: <span id="appVersion"></span></div>
 </div>
 
-<!-- ✅ Juiste JS pad (jij had 'Cannot GET /app.j' → dit is correct) -->
-<script src="/app.js?v=1.13" defer></script>
-
+<script src="/app.js?v=1.13.1" defer></script>
 </body>
 </html>

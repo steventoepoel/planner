@@ -416,7 +416,7 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   align-items:center;
 }
 .ovLeft{ font-weight:900; white-space:nowrap; }
-.ovMid{ color:var(--muted); font-weight:800; min-width:0; overflow:hidden; text-overflow:ellipsis; font-size:12px; line-height:1.15; opacity:.95; }
+.ovMid{ color:var(--muted); font-weight:800; min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .ovRight{ font-weight:900; white-space:nowrap; }
 .ovDelay{ color:var(--bad); font-weight:900; margin-left:6px; }
 
@@ -533,3 +533,53 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
     font-size:20px;
   }
 }
+
+
+
+/* v1.13.1 fixes (matching index.html) */
+.logoBtn{
+  appearance:none;
+  border:none;
+  background:transparent;
+  padding:0;
+  margin:0;
+  cursor:pointer;
+}
+.logoBtn img{
+  width:92px;
+  height:92px;
+  border-radius:22px;
+  object-fit:contain;
+  background:rgba(255,255,255,0.15);
+  padding:10px;
+}
+@media (max-width:768px){
+  .logoBtn img{ width:68px; height:68px; border-radius:18px; padding:8px; }
+  /* 'Modus' label weg op mobiel */
+  .modeLabel{ display:none; }
+  /* datum/tijd naast elkaar beter */
+  .datetimeRow{ display:flex; flex-direction:row; gap:10px; }
+  .datetimeRow .col:first-child{ flex:1.1; }
+  .datetimeRow .timeCols{ flex:0.9; }
+}
+
+/* swap button naast station input */
+.stationRow{
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+.swapIconBtn{
+  width:auto;
+  padding:12px 14px;
+  border-radius:12px;
+  background:var(--chip);
+  border:1px solid var(--border);
+  color:var(--text);
+  font-weight:900;
+}
+.swapIconBtn:hover{ cursor:pointer; }
+
+.favBtn{ display:flex; justify-content:center; align-items:center; gap:8px; }
+.favBtn .star{ display:inline-block; }
+
