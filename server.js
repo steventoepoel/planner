@@ -1,4 +1,4 @@
-// server.js (Render production) — v1.08
+// server.js (Render production) — v1.13
 // p-limit + rate limiting + caching + prefix fallback + slimme Extreme-B + OV (bus/tram/metro)
 // + searchForArrival support + /reis returns { options } + sw.js no-cache for PWA updates
 
@@ -434,7 +434,7 @@ function optionSignature(o) {
 }
 
 /* =========================
-   /reis (NORMAAL) — v1.08
+   /reis (NORMAAL) — v1.13
    - return { options } zodat frontend hetzelfde kan renderen
    - ondersteunt searchForArrival=true/false
    ========================= */
@@ -467,7 +467,7 @@ app.get("/reis", async (req, res) => {
 });
 
 /* =========================
-   /reis-extreme-b (SLIMMER) — v1.08
+   /reis-extreme-b (SLIMMER) — v1.13
    - ondersteunt searchForArrival=true/false (base/A)
    - B leg zoekt altijd vanaf arrive-time (depart-based), dus searchForArrival=false
    ========================= */
@@ -654,6 +654,7 @@ const STATION_TO_TPC = {
   rtb: ["31001125"],                       // legacy: Rotterdam Blaak
   rtb_tram: ["HA1125", "HA1312"],
   rtb_metro: ["HA8136", "HA8137"],
+};
 
 // Helper: converteer korte haltecodes naar OVapi TPC
 // - Rotterdam gebruikt vaak HA1234 -> 31001234
@@ -683,7 +684,7 @@ function normalizeTpc(stationKey, raw) {
 
   return s;
 }
-};
+
 
 const ovCache = new Map();
 const OV_TTL_MS = 20000;
@@ -716,7 +717,7 @@ async function fetchOvTpcSafe(tpc) {
         {
           headers: {
             Accept: "application/json",
-            "User-Agent": "toepoels-planner/1.08",
+            "User-Agent": "toepoels-planner/1.13",
           },
         },
         8000
