@@ -88,6 +88,16 @@ header{
   object-fit:contain;
 }
 
+.logoBtn{
+  width:auto;
+  background:transparent;
+  border:none;
+  padding:0;
+  border-radius:18px;
+  cursor:pointer;
+}
+.logoBtn:active{ transform: scale(0.98); }
+
 /* Mode toggle */
 .modeWrap{ display:flex; }
 .segment{
@@ -205,13 +215,45 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   .segment{ flex-direction:column; align-items:flex-start; gap:8px; }
   .segmentBtn{ padding:10px 12px; }
 
-  .stationRow{ align-items:flex-end; }
-  .swapBtn{ height:48px; width:48px; min-width:48px; border-radius:16px; }
+  .stationRow{
+  display:grid;
+  grid-template-columns: 1fr 52px;
+  grid-template-rows: auto auto;
+  gap:10px;
+  align-items:stretch;
+}
+.stationRow .stationCol{ min-width:0; }
+.swapBtn{
+  grid-column:2;
+  grid-row:1 / 3; /* naast beide inputs */
+  height:auto;
+  width:52px;
+  min-width:52px;
+  border-radius:16px;
+  align-self:center;
+}
 
-  .datetimeRow{ align-items:flex-start; }
-  .datetimeRow .dateCol{ flex:1.2; }
-  .datetimeRow .timeCols{ flex:0.8; }
-  .datetimeRow .timeCols select{ padding:10px; font-size:15px; }
+  .datetimeRow{
+  gap:8px;
+  align-items:flex-start;
+}
+.datetimeRow .dateCol{
+  flex:0 0 54%;
+  min-width:0;
+}
+.datetimeRow .timeCols{
+  flex:0 0 46%;
+  gap:8px;
+}
+.datetimeRow .timeCols select{
+  padding:10px;
+  font-size:15px;
+}
+.datetimeRow input[type="date"]{
+  padding:10px;
+  font-size:15px;
+}
+  .favMove{ display:none; }
 }
 
 /* Result cards */
@@ -320,6 +362,18 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
 .transferRight.good{ color:var(--good); }
 .transferRight.ok{ color:var(--ok); }
 .transferRight.bad{ color:var(--bad); }
+
+
+/* Fav button (centered with star) */
+#favBtn{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  text-align:center;
+}
+#favBtn .favStar{ font-size:18px; line-height:1; }
+#favBtn .favText{ font-weight:900; }
 
 /* Favorieten */
 .favBtn{ background:var(--fav); color:var(--favText); }

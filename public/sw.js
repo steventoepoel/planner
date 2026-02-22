@@ -6,7 +6,7 @@
 // - API: nooit cachen (stations/reis/ov)
 // - skipWaiting + clientsClaim voor snelle updates
 
-const VERSION = "1.11";
+const VERSION = "1.12";
 const CACHE_STATIC = `toepoels-static-${VERSION}`;
 const CACHE_HTML = `toepoels-html-${VERSION}`;
 

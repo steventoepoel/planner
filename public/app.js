@@ -1,4 +1,4 @@
-/* Toepoel's Reisplanner — app.js (v1.11)
+/* Toepoel's Reisplanner — app.js (v1.12)
    Focus: stability + performance + iOS/Safari time parsing + OV verbeteringen.
 */
 
@@ -25,6 +25,31 @@ function safeParseTime(s){
 function safeDate(s){
   const t = safeParseTime(s);
   return Number.isFinite(t) ? new Date(t) : null;
+}
+
+/* =========================
+   HARD REFRESH (logo click)
+   - wis caches + unregister SW + reload met cache-bust param
+   ========================= */
+async function hardRefresh(){
+  try{
+    // 1) cache storage leeg
+    if (window.caches?.keys){
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    // 2) service workers unregisteren (pakt SW-mismatch issues op iOS)
+    if (navigator.serviceWorker?.getRegistrations){
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister().catch(()=>{})));
+    }
+    // 3) reload met cache-bust, behoud query params
+    const u = new URL(location.href);
+    u.searchParams.set("r", String(Date.now()));
+    location.replace(u.toString());
+  } catch {
+    location.reload();
+  }
 }
 
 /* =========================
@@ -198,6 +223,8 @@ const naarHint = document.getElementById("naarHint");
 const searchTypeEl = document.getElementById("searchType");
 const modeNormalBtn = document.getElementById("modeNormal");
 const modeExtremeBtn = document.getElementById("modeExtreme");
+const logoReloadBtn = document.getElementById("logoReload");
+logoReloadBtn?.addEventListener("click", ()=>{ hardRefresh(); });
 
 /* =========================
    STATE KEYS
@@ -459,12 +486,29 @@ const OV_BUTTONS_BY_DEST = new Map([
     { code: "ddr", label: "OV stad" },
     { code: "ddr_streek", label: "OV streek" }
   ]],
+
   ["dordrecht zuid", [{ code: "ddzd", label: "OV" }]],
   ["zwijndrecht", [{ code: "zwnd", label: "OV" }]],
-  ["rotterdam blaak", [{ code: "rtb", label: "OV" }]],
-  ["rotterdam centraal", [{ code: "rtd", label: "OV" }]],
-  ["den haag hs", [{ code: "gvh", label: "OV" }]],
-  ["den haag centraal", [{ code: "gvc", label: "OV" }]],
+
+  // Rotterdam
+  ["rotterdam centraal", [
+    { code: "rtd_tram",  label: "Tram" },
+    { code: "rtd_metro", label: "Metro" },
+    { code: "rtd_bus",   label: "Bus" }
+  ]],
+  ["rotterdam blaak", [
+    { code: "rtb_tram",  label: "Tram" },
+    { code: "rtb_metro", label: "Metro" }
+  ]],
+
+  // Den Haag
+  ["den haag hs", [
+    { code: "gvh_tram", label: "Tram" },
+    { code: "gvh_bus",  label: "Bus" }
+  ]],
+  ["den haag centraal", [
+    { code: "gvc_tram", label: "Tram" }
+  ]],
 ]);
 
 function classifyOvTransfer(min){
@@ -527,7 +571,7 @@ function renderOvPanel(panelEl, title, ovData, trainArrIso){
 
       const mid = document.createElement("div");
       mid.className = "ovMid";
-      mid.textContent = d.destination || d.stopName || "";
+      mid.textContent = (d.destination || d.stopName || "") ? `→ ${d.destination || d.stopName || ""}` : "";
 
       const right = document.createElement("div");
       right.className = "ovRight";
