@@ -632,28 +632,57 @@ app.get("/reis-extreme-b", async (req, res) => {
 // stationcode -> tpc(s)
 const STATION_TO_TPC = {
   // Dordrecht
-  ddr: ["53600140"],                 // Dordrecht (OV stad)
-  ddr_streek: ["53600160","53600151"], // Dordrecht (OV streek)
-  ddzd: ["53608690"],                // Dordrecht Zuid
-  zwnd: ["53500260"],                // Zwijndrecht
+  ddr: ["53600140"],                       // OV stad
+  ddr_streek: ["53600160", "53600151"],    // OV streek (busperrons)
+  ddzd: ["53608690"],                      // Dordrecht Zuid
+  zwnd: ["53500260"],                      // Zwijndrecht
 
-  // Rotterdam
-  rtd: ["31003941"],                 // (legacy) Rotterdam Centraal
-  rtd_tram: ["HA1016","HA1134","HA1039","HA1118","HA1421"],
-  rtd_metro: ["HA8700","HA8000"],
-  rtd_bus: ["HA3941","HA3942","HA3944"],
-
-  rtb: ["31001125"],                 // (legacy) Rotterdam Blaak
-  rtb_tram: ["HA1125","HA1312"],
-  rtb_metro: ["HA8136","HA8137"],
-
-  // Den Haag
-  gvh: ["32003846"],                 // (legacy) Den Haag HS
-  gvh_tram: ["2731","2721","2720","2730"],
+  // Den Haag (korte halte-codes -> worden automatisch geprefixt)
+  gvh: ["32003846"],                       // legacy: Den Haag HS
+  gvh_tram: ["2731", "2721", "2720", "2730"],
   gvh_bus: ["3847"],
 
-  gvc: ["32002609"],                 // (legacy) Den Haag Centraal
-  gvc_tram: ["2601","2602","2603","2604"],
+  gvc: ["32002609"],                       // legacy: Den Haag Centraal
+  gvc_tram: ["2601", "2602", "2603", "2604"],
+
+  // Rotterdam (HA-codes -> worden automatisch geconverteerd)
+  rtd: ["31003941"],                       // legacy: Rotterdam Centraal
+  rtd_tram: ["HA1016", "HA1134", "HA1039", "HA1118", "HA1421"],
+  rtd_metro: ["HA8700", "HA8000"],
+  rtd_bus: ["HA3941", "HA3942", "HA3944"],
+
+  rtb: ["31001125"],                       // legacy: Rotterdam Blaak
+  rtb_tram: ["HA1125", "HA1312"],
+  rtb_metro: ["HA8136", "HA8137"],
+
+// Helper: converteer korte haltecodes naar OVapi TPC
+// - Rotterdam gebruikt vaak HA1234 -> 31001234
+// - Den Haag gebruikt vaak 4-cijferig -> 3200xxxx
+function normalizeTpc(stationKey, raw) {
+  const s = String(raw || "").trim();
+  if (!s) return null;
+
+  // al een volledige TPC (8+ cijfers)
+  if (/^\d{8,}$/.test(s)) return s;
+
+  // Rotterdam HAxxxx -> 3100xxxx
+  const mHa = /^HA(\d{4,5})$/i.exec(s);
+  if (mHa) {
+    const digits = mHa[1];
+    if (digits.length === 4) return `3100${digits}`;
+    if (digits.length === 5) return `31${digits}`; // zeldzaam, maar beter dan niks
+  }
+
+  // Alleen cijfers (bijv. 2731, 3847, 2601)
+  if (/^\d{4,6}$/.test(s)) {
+    // Den Haag keys -> 3200
+    if (String(stationKey).startsWith("gv")) return `3200${s.padStart(4, "0")}`;
+    // Rotterdam keys -> 3100
+    if (String(stationKey).startsWith("rt")) return `3100${s.padStart(4, "0")}`;
+  }
+
+  return s;
+}
 };
 
 const ovCache = new Map();
@@ -687,7 +716,7 @@ async function fetchOvTpcSafe(tpc) {
         {
           headers: {
             Accept: "application/json",
-            "User-Agent": "toepoels-planner/1.12",
+            "User-Agent": "toepoels-planner/1.08",
           },
         },
         8000
@@ -735,9 +764,12 @@ function normalizeOvapi(tpc, dataRaw) {
 // GET /ov/by-station?station=ddr
 app.get("/ov/by-station", async (req, res) => {
   const station = String(req.query.station || "").trim().toLowerCase();
-  const tpcs = STATION_TO_TPC[station];
+  const rawTpcs = STATION_TO_TPC[station];
 
-  if (!tpcs) return res.status(404).json({ error: "Station niet in OV mapping" });
+  if (!rawTpcs) return res.status(404).json({ error: "Station niet in OV mapping" });
+
+  // normaliseer alle codes naar echte TPCs
+  const tpcs = Array.from(new Set(rawTpcs.map(x => normalizeTpc(station, x)).filter(Boolean)));
 
   const key = `ov:${station}`;
   const cached = ovCacheGet(key);
@@ -760,7 +792,46 @@ app.get("/ov/by-station", async (req, res) => {
     })
   );
 
-  const merged = perStop
+  
+  // Fallback: als alles leeg is, probeer alternatieve prefix (soms wisselt regio-codering)
+  // Alleen relevant als er korte codes waren.
+  const hadShort = rawTpcs.some(x => /^\d{4,6}$/.test(String(x||"").trim()) || /^HA\d{4,5}$/i.test(String(x||"").trim()));
+  const anyPasses = perStop.some(x => (x.departures||[]).length > 0);
+
+  if (hadShort && !anyPasses) {
+    // probeer in het uiterste geval zonder stationKey prefix-logica: 3100 en 3200 voor 4-cijferige codes
+    const altCandidates = [];
+    for (const raw of rawTpcs) {
+      const s = String(raw||"").trim();
+      if (/^\d{4}$/.test(s)) {
+        altCandidates.push(`3100${s}`, `3200${s}`);
+      } else if (/^HA(\d{4})$/i.test(s)) {
+        const d = s.replace(/^HA/i,"");
+        altCandidates.push(`3100${d}`);
+      }
+    }
+    const altTpcs = Array.from(new Set(altCandidates));
+    if (altTpcs.length) {
+      const perStopAlt = await Promise.all(
+        altTpcs.map(async (tpc) => {
+          const r = await fetchOvTpcSafe(tpc);
+          if (!r.ok) {
+            return { tpc: String(tpc), stopName: null, passCount: 0, departures: [], usedUrl: null, error: r.error };
+          }
+          const raw = r.raw;
+          const root = raw?.[String(tpc)];
+          const stopName = root?.Stop?.Name || null;
+          const passCount = root?.Passes ? Object.keys(root.Passes).length : 0;
+          const deps = normalizeOvapi(tpc, raw);
+          return { tpc: String(tpc), stopName, passCount, departures: deps, usedUrl: r.usedUrl, error: null };
+        })
+      );
+      // merge alt into perStop (append)
+      perStop.push(...perStopAlt);
+    }
+  }
+
+const merged = perStop
     .flatMap((x) => x.departures || [])
     .filter(Boolean)
     .sort((a, b) => Date.parse(a.expectedTime) - Date.parse(b.expectedTime));
@@ -768,6 +839,7 @@ app.get("/ov/by-station", async (req, res) => {
   const payload = {
     station,
     tpcs,
+    rawTpcs,
     perStop,
     departures: merged.slice(0, 18),
   };
