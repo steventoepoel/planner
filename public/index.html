@@ -1,36 +1,56 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Toepoel's Reisplanner – Normale & Extra Korte Overstappen</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
-  <meta name="description" content="Snelle treinplanner met normale én extra korte overstappen. Bekijk minimale overstaptijd, vergelijk reistijden en check live OV-aansluitingen." />
-  <link rel="canonical" href="https://www.toepoels.nl/" />
+<!-- ✅ SEO basis -->
+<title>Toepoel's Reisplanner – Normale & Extra Korte Overstappen</title>
+<meta name="description" content="Snelle treinplanner met normale én extra korte overstappen. Bekijk minimale overstaptijd, vergelijk reistijden en check live OV-aansluitingen." />
+<link rel="canonical" href="https://www.toepoels.nl/" />
+<meta name="robots" content="index,follow" />
 
-  <!-- Versie -->
-  <meta name="app-version" content="1.12" />
+<!-- ✅ Open Graph / social share -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Toepoel's Reisplanner" />
+<meta property="og:title" content="Toepoel's Reisplanner" />
+<meta property="og:description" content="Normale én extra korte overstappen. Bekijk minimale overstaptijd, vergelijk reistijden en check live OV-aansluitingen." />
+<meta property="og:url" content="https://www.toepoels.nl/" />
+<meta property="og:image" content="https://www.toepoels.nl/toepoels_planner_optimized.webp" />
+<meta property="og:image:type" content="image/webp" />
 
-  <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#275D63" />
+<!-- ✅ Twitter card -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Toepoel's Reisplanner" />
+<meta name="twitter:description" content="Normale én extra korte overstappen. Bekijk minimale overstaptijd, vergelijk reistijden en check live OV-aansluitingen." />
+<meta name="twitter:image" content="https://www.toepoels.nl/toepoels_planner_optimized.webp" />
 
-  <!-- Icons -->
-  <link rel="icon" type="image/png" href="/logo-192.png" />
-  <link rel="apple-touch-icon" href="/logo-192.png" />
+<!-- ✅ Structured data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Toepoel's Reisplanner",
+  "url": "https://www.toepoels.nl/",
+  "applicationCategory": "TravelApplication",
+  "operatingSystem": "All",
+  "description": "Snelle treinplanner met normale en extra korte overstappen, minimale overstaptijd en live OV-aansluitingen.",
+  "image": "https://www.toepoels.nl/toepoels_planner_optimized.webp"
+}
+</script>
 
-  <!-- Share preview (naam + logo) -->
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="Toepoel's Reisplanner" />
-  <meta property="og:description" content="Reisplanner met alle overstappen — normaal of extra korte overstappen." />
-  <meta property="og:url" content="https://www.toepoels.nl/" />
-  <meta property="og:image" content="https://www.toepoels.nl/toepoels_planner_optimized.webp" />
-  <meta property="og:image:type" content="image/webp" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Toepoel's Reisplanner" />
-  <meta name="twitter:description" content="Reisplanner met alle overstappen — normaal of extra korte overstappen." />
-  <meta name="twitter:image" content="https://www.toepoels.nl/toepoels_planner_optimized.webp" />
+<!-- ✅ Versie -->
+<meta name="app-version" content="1.12.2" />
 
-  <link rel="stylesheet" href="/styles.css?v=1.11" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#275D63" />
+
+<!-- Icons (PWA icons blijven PNG) -->
+<link rel="icon" type="image/png" href="/logo-192.png" />
+<link rel="apple-touch-icon" href="/logo-192.png" />
+
+<link rel="stylesheet" href="/styles.css?v=1.09" />
+<script defer src="/app.js?v=1.09"></script>
 </head>
 
 <body>
@@ -38,18 +58,18 @@
   <div class="safe">
     <div class="headerRow">
       <div class="brandBlock">
-        <button id="logoReload" class="logoBtn" type="button" aria-label="Harde refresh" title="Harde refresh">
-          <img class="brandLogo" src="/toepoels_planner_optimized.webp" alt="Toepoel's Reisplanner logo" />
-        </button>
+        <img class="brandLogo" src="/toepoels_planner_optimized.webp" alt="Toepoel's Reisplanner logo">
 
-        <div class="modeWrap" aria-label="Kies modus">
-          <div class="segment" role="group">
+        <div class="modeWrap">
+          <div class="modeLabel">Modus</div>
+          <div class="segment segmentVertical" role="group" aria-label="Kies modus">
             <button id="modeNormal" class="segmentBtn" type="button">Normale overstappen</button>
             <button id="modeExtreme" class="segmentBtn active" type="button">Extra korte overstappen</button>
           </div>
         </div>
       </div>
 
+      <!-- desktop only -->
       <div class="headerControls" title="Standaard: Extra korte overstappen">
         ⚡ Extra korte overstappen
       </div>
@@ -57,32 +77,32 @@
   </div>
 </header>
 
-<main class="container safe">
-  <section class="card">
+<div class="container safe">
+  <div class="card">
+
+    <!-- ✅ stations + wissel icoon rechts -->
     <div class="stationRow">
-      <div class="stationCol">
-        <label for="van">Van</label>
-        <input id="van" list="stationsVan" placeholder="Typ station (min. 2 letters)" autocomplete="off" />
+      <div class="stationFields">
+        <label>Van</label>
+        <input id="van" list="stationsVan" placeholder="Typ station (min. 2 letters)" autocomplete="off">
         <datalist id="stationsVan"></datalist>
-        <div class="small hint" id="vanHint"></div>
+        <div class="small" id="vanHint" style="margin-top:6px;"></div>
+
+        <label>Naar</label>
+        <input id="naar" list="stationsNaar" placeholder="Typ station (min. 2 letters)" autocomplete="off">
+        <datalist id="stationsNaar"></datalist>
+        <div class="small" id="naarHint" style="margin-top:6px;"></div>
       </div>
 
-      <button id="wisselBtnIcon" class="swapBtn" type="button" aria-label="Wissel vertrek en aankomst" title="Wissel">
+      <button id="wisselBtnIcon" type="button" class="swapIcon" aria-label="Wissel vertrek- en aankomststation" title="Wissel">
         ⇄
       </button>
-
-      <div class="stationCol">
-        <label for="naar">Naar</label>
-        <input id="naar" list="stationsNaar" placeholder="Typ station (min. 2 letters)" autocomplete="off" />
-        <datalist id="stationsNaar"></datalist>
-        <div class="small hint" id="naarHint"></div>
-      </div>
     </div>
 
     <label>Datum & tijd</label>
     <div class="datetimeRow">
       <div class="col dateCol">
-        <input type="date" id="dateInput" />
+        <input type="date" id="dateInput">
       </div>
       <div class="col timeCols">
         <select id="hourSelect" aria-label="Uur"></select>
@@ -99,38 +119,43 @@
 
     <div class="row">
       <button id="zoekBtn" type="button">Zoek reis</button>
-      <button id="favBtn" type="button" class="favBtn"><span class="favStar" aria-hidden="true">⭐</span><span class="favText">Bewaar favoriet</span></button>
+    </div>
+
+    <div class="row">
+      <button id="favBtn" type="button" class="favBtn">⭐ Bewaar favoriet</button>
     </div>
 
     <div class="small" id="humanError" style="margin-top:10px;"></div>
-  </section>
+  </div>
 
-  <section class="card favlist">
+  <div class="card favlist">
     <b>Favoriete reizen</b>
     <div class="small" style="margin-top:6px;">Tip: sleep met ⠿ om te sorteren. (Of gebruik ▲▼)</div>
     <div id="favorieten"></div>
-  </section>
+  </div>
 
-  <section id="resultaat"></section>
-</main>
+  <div id="resultaat"></div>
+</div>
 
+<!-- ✅ update melding -->
 <div class="updateBanner safe" id="updateBanner" role="status" aria-live="polite">
   <div class="top">
     <div>
-      <b>Nieuwe versie beschikbaar</b><br />
+      <b>Nieuwe versie beschikbaar</b><br>
       <span class="small">Klik om te herladen.</span>
     </div>
     <button id="reloadBtn" type="button">Herladen</button>
   </div>
 </div>
 
-<footer class="footer safe">
+<div class="footer safe">
   <div>Aan deze planner kunnen geen rechten aan worden ontleend.</div>
   <div>Deze planner helpt je alleen om te kijken of je nog sneller kunt reizen.</div>
   <div>Dit lukt niet altijd. 😉</div>
-  <div>Versie: <span id="appVersion"></span></div>
-</footer>
-
-<script defer src="/app.js?v=1.11"></script>
+  <div style="margin-top:6px;">
+    <a href="/over.html">Uitleg / Over</a>
+  </div>
+  <div style="margin-top:6px;">Versie: <span id="appVersion"></span></div>
+</div>
 </body>
 </html>

@@ -1,5 +1,3 @@
-/* Toepoel's Reisplanner — styles.css (v1.11) */
-
 :root{
   --brand:#275D63;
   --brand2:#2f6f76;
@@ -23,6 +21,7 @@
   --warnText:#1a1a1a;
 }
 
+/* ✅ Volgt device theme automatisch */
 @media (prefers-color-scheme: dark){
   :root{
     --bg:#0f1415;
@@ -59,6 +58,7 @@ body{
   padding-right:max(14px, env(safe-area-inset-right));
 }
 
+/* Header */
 header{
   background:var(--brand);
   color:var(--brandText);
@@ -71,39 +71,41 @@ header{
   align-items:center;
   max-width:1000px;
   margin:auto;
+  flex-wrap:wrap;
   gap:16px;
 }
 .brandBlock{
   display:flex;
   align-items:center;
   gap:14px;
-  min-width:0;
 }
 .brandLogo{
-  width:72px;
-  height:72px;
-  border-radius:18px;
+  width:92px;
+  height:92px;
+  border-radius:22px;
   background:rgba(255,255,255,0.15);
-  padding:8px;
+  padding:10px;
   object-fit:contain;
 }
 
-.logoBtn{
-  width:auto;
-  background:transparent;
-  border:none;
-  padding:0;
-  border-radius:18px;
-  cursor:pointer;
-}
-.logoBtn:active{ transform: scale(0.98); }
-
 /* Mode toggle */
-.modeWrap{ display:flex; }
+.modeWrap{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.modeLabel{
+  font-weight:900;
+  font-size:13px;
+  opacity:.95;
+}
 .segment{
   display:flex;
   gap:10px;
   align-items:center;
+}
+.segmentVertical{
+  flex-direction:row; /* desktop default */
 }
 .segmentBtn{
   width:auto;
@@ -122,7 +124,6 @@ header{
   color:var(--brand);
   border-color:#fff;
 }
-
 .headerControls{
   display:flex;
   gap:12px;
@@ -130,6 +131,8 @@ header{
   font-weight:900;
   opacity:0.95;
 }
+
+/* Hide right header text on mobile */
 @media (max-width:768px){
   .headerControls{ display:none; }
 }
@@ -140,6 +143,7 @@ header{
   margin:auto;
   padding-top:14px;
 }
+
 .card{
   background:var(--card);
   border:1px solid var(--border);
@@ -172,29 +176,24 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
 .row > *{ flex:1; }
 
 .small{ color:var(--muted); font-size:13px; line-height:1.35; }
-.hint{ margin-top:6px; min-height:16px; }
 
-/* Station row with swap icon */
+/* Stations row + swap icon */
 .stationRow{
   display:flex;
   gap:10px;
   align-items:flex-end;
 }
-.stationCol{ flex:1; min-width:0; }
-.swapBtn{
-  width:44px;
-  min-width:44px;
-  height:44px;
-  padding:0;
-  margin-top:0;
+.stationFields{ flex:1; min-width:0; }
+.swapIcon{
+  width:52px;
+  height:52px;
   border-radius:14px;
-  background:rgba(0,0,0,0.06);
-  border:1px solid var(--border);
-  color:var(--text);
+  font-size:22px;
+  background:var(--brand);
+  color:white;
+  border:none;
   font-weight:900;
-}
-@media (prefers-color-scheme: dark){
-  .swapBtn{ background:rgba(255,255,255,0.06); }
+  margin-top:6px;
 }
 
 /* Datum/tijd layout */
@@ -205,58 +204,10 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   align-items:flex-start;
 }
 .datetimeRow .col{ flex:1; }
-.datetimeRow .timeCols{ display:flex; gap:10px; }
+.datetimeRow .timeCols{ display:flex; gap:10px; align-items:stretch; }
 .datetimeRow .timeCols select{ flex:1; }
 
-/* Mobile layout tweaks */
-@media (max-width:768px){
-  .headerRow{ align-items:flex-start; }
-  .brandLogo{ width:64px; height:64px; }
-  .segment{ flex-direction:column; align-items:flex-start; gap:8px; }
-  .segmentBtn{ padding:10px 12px; }
-
-  .stationRow{
-  display:grid;
-  grid-template-columns: 1fr 52px;
-  grid-template-rows: auto auto;
-  gap:10px;
-  align-items:stretch;
-}
-.stationRow .stationCol{ min-width:0; }
-.swapBtn{
-  grid-column:2;
-  grid-row:1 / 3; /* naast beide inputs */
-  height:auto;
-  width:52px;
-  min-width:52px;
-  border-radius:16px;
-  align-self:center;
-}
-
-  .datetimeRow{
-  gap:8px;
-  align-items:flex-start;
-}
-.datetimeRow .dateCol{
-  flex:0 0 54%;
-  min-width:0;
-}
-.datetimeRow .timeCols{
-  flex:0 0 46%;
-  gap:8px;
-}
-.datetimeRow .timeCols select{
-  padding:10px;
-  font-size:15px;
-}
-.datetimeRow input[type="date"]{
-  padding:10px;
-  font-size:15px;
-}
-  .favMove{ display:none; }
-}
-
-/* Result cards */
+/* Result cards (clickable + expand) */
 .resultCard{
   background:var(--card);
   border:1px solid var(--border);
@@ -309,7 +260,10 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   user-select:none;
 }
 
-.details{ display:none; margin-top:10px; }
+.details{
+  display:none;
+  margin-top:10px;
+}
 .details.open{ display:block; }
 
 .warn{
@@ -338,7 +292,6 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
 }
 .delay{ color:var(--bad); font-weight:900; }
 
-/* transfers */
 .transferList{
   margin-top:8px;
   display:flex;
@@ -363,20 +316,9 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
 .transferRight.ok{ color:var(--ok); }
 .transferRight.bad{ color:var(--bad); }
 
-
-/* Fav button (centered with star) */
-#favBtn{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:10px;
-  text-align:center;
-}
-#favBtn .favStar{ font-size:18px; line-height:1; }
-#favBtn .favText{ font-weight:900; }
-
 /* Favorieten */
 .favBtn{ background:var(--fav); color:var(--favText); }
+
 .favlist .favitem{
   display:flex;
   justify-content:space-between;
@@ -413,11 +355,13 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
 @media (min-width: 769px){
   .favName{ max-width: 520px; }
 }
+
 .favRight{
   display:flex;
   gap:8px;
   align-items:center;
 }
+
 .favMove{
   width:auto;
   padding:8px 10px;
@@ -437,7 +381,7 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   font-weight:900;
 }
 
-/* OV buttons + panel */
+/* OV inline (arrival-only) */
 .ovBtn{
   width:auto;
   padding:6px 10px;
@@ -472,7 +416,7 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   align-items:center;
 }
 .ovLeft{ font-weight:900; white-space:nowrap; }
-.ovMid{ color:var(--muted); font-weight:800; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.ovMid{ color:var(--muted); font-weight:800; min-width:0; overflow:hidden; text-overflow:ellipsis; font-size:12px; line-height:1.15; opacity:.95; }
 .ovRight{ font-weight:900; white-space:nowrap; }
 .ovDelay{ color:var(--bad); font-weight:900; margin-left:6px; }
 
@@ -524,4 +468,68 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   font-size:12px;
   color:var(--muted);
   text-align:center;
+}
+.footer a{ color:var(--muted); font-weight:900; }
+
+/* ===== Mobiel (v1.09 wensen) ===== */
+@media (max-width:768px){
+  /* header: logo links, buttons naast logo onder elkaar */
+  .headerRow{
+    flex-direction:row;
+    justify-content:flex-start;
+    align-items:center;
+    flex-wrap:nowrap;
+    gap:16px;
+  }
+  .brandBlock{
+    flex-direction:row;
+    align-items:center;
+    gap:14px;
+  }
+  .brandLogo{
+    width:72px;
+    height:72px;
+    border-radius:18px;
+  }
+  .modeLabel{
+    display:none; /* woord 'Modus' weg */
+  }
+  .segmentVertical{
+    flex-direction:column;
+    align-items:stretch;
+    gap:8px;
+  }
+  .segmentBtn{
+    font-size:13px;
+    padding:10px 12px;
+    white-space:nowrap;
+  }
+
+  /* datum + tijd compacter: tijd naast datum en kleiner */
+  .datetimeRow{
+    flex-direction:row;
+    align-items:center;
+    gap:10px;
+  }
+  .datetimeRow .dateCol{ flex: 1.25; }
+  .datetimeRow .timeCols{ flex: 0.75; }
+  .datetimeRow input, .datetimeRow select{
+    padding:10px;
+    font-size:14px;
+  }
+  .datetimeRow .timeCols select{
+    max-width: 88px;
+  }
+
+  /* station inputs iets compacter */
+  .stationFields input{
+    padding:10px;
+    font-size:14px;
+  }
+  .swapIcon{
+    width:48px;
+    height:48px;
+    border-radius:12px;
+    font-size:20px;
+  }
 }
