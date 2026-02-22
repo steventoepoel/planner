@@ -9,7 +9,7 @@
   <link rel="canonical" href="https://www.toepoels.nl/" />
 
   <!-- Versie -->
-  <meta name="app-version" content="1.11" />
+  <meta name="app-version" content="1.12" />
 
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#275D63" />
@@ -38,7 +38,9 @@
   <div class="safe">
     <div class="headerRow">
       <div class="brandBlock">
-        <img class="brandLogo" src="/toepoels_planner_optimized.webp" alt="Toepoel's Reisplanner logo" />
+        <button id="logoReload" class="logoBtn" type="button" aria-label="Harde refresh" title="Harde refresh">
+          <img class="brandLogo" src="/toepoels_planner_optimized.webp" alt="Toepoel's Reisplanner logo" />
+        </button>
 
         <div class="modeWrap" aria-label="Kies modus">
           <div class="segment" role="group">
@@ -97,7 +99,7 @@
 
     <div class="row">
       <button id="zoekBtn" type="button">Zoek reis</button>
-      <button id="favBtn" type="button" class="favBtn">⭐ Bewaar favoriet</button>
+      <button id="favBtn" type="button" class="favBtn"><span class="favStar" aria-hidden="true">⭐</span><span class="favText">Bewaar favoriet</span></button>
     </div>
 
     <div class="small" id="humanError" style="margin-top:10px;"></div>
