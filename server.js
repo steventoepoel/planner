@@ -120,6 +120,7 @@ function requireApiKey(res) {
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
+    version: "1.11",
     hasApiKey: Boolean(API_KEY),
     node: process.version,
   });
@@ -334,7 +335,36 @@ app.get("/stations", async (req, res) => {
 /* =========================
    TRIPS helpers
    ========================= */
+
+// ✅ Tiny in-memory cache (reduce NS calls when users click/refresh)
+// TTL is short on purpose (data changes quickly)
+const tripsCache = new Map(); // key -> {t, payload}
+const TRIPS_TTL_MS = 20 * 1000;
+
+function tripsCacheGet(key){
+  const hit = tripsCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.t > TRIPS_TTL_MS){
+    tripsCache.delete(key);
+    return null;
+  }
+  return hit.payload;
+}
+function tripsCacheSet(key, payload){
+  tripsCache.set(key, { t: Date.now(), payload });
+  // safety cap
+  if (tripsCache.size > 400){
+    const entries = Array.from(tripsCache.entries()).sort((a,b)=>a[1].t-b[1].t);
+    for (let i=0;i<120;i++) tripsCache.delete(entries[i][0]);
+  }
+}
+
 async function fetchTrips({ from, to, dateTimeISO, extraParams = {} }) {
+  const cacheKey = `trips:${from}|${to}|${dateTimeISO}|` + JSON.stringify(Object.keys(extraParams).sort().reduce((o,k)=>{o[k]=extraParams[k];return o;},{}));
+  const cached = tripsCacheGet(cacheKey);
+  if (cached) return cached;
+
+
   const base = new URL("https://gateway.apiportal.ns.nl/reisinformatie-api/api/v3/trips");
   base.searchParams.set("fromStation", from);
   base.searchParams.set("toStation", to);
@@ -346,7 +376,9 @@ async function fetchTrips({ from, to, dateTimeISO, extraParams = {} }) {
     }
   }
 
-  return await limitTrips(() => fetchJsonStrict(base.toString(), { headers }, 10000));
+  const data = await limitTrips(() => fetchJsonStrict(base.toString(), { headers }, 10000));
+  tripsCacheSet(cacheKey, data);
+  return data;
 }
 
 function tripToOption(trip) {
@@ -631,8 +663,10 @@ app.get("/reis-extreme-b", async (req, res) => {
 
 // stationcode -> tpc(s)
 const STATION_TO_TPC = {
-  ddr: ["53600140"],     // Dordrecht (busperron A, volgens ovzoeker)
+  ddr: ["53600140"],     // Dordrecht (stad)
+  ddr_streek: ["53600160", "53600151"], // Dordrecht streek (extra haltes)
   ddzd: ["53608690"],    // Dordrecht Zuid
+  zwnd: ["53500260"],    // Zwijndrecht
   rtb: ["31001125"],     // Rotterdam Blaak
   rtd: ["31003941"],     // Rotterdam Centraal
   gvh: ["32003846"],     // Den Haag HS
@@ -670,7 +704,7 @@ async function fetchOvTpcSafe(tpc) {
         {
           headers: {
             Accept: "application/json",
-            "User-Agent": "toepoels-planner/1.08",
+            "User-Agent": "toepoels-planner/1.11",
           },
         },
         8000
@@ -718,6 +752,11 @@ function normalizeOvapi(tpc, dataRaw) {
 // GET /ov/by-station?station=ddr
 app.get("/ov/by-station", async (req, res) => {
   const station = String(req.query.station || "").trim().toLowerCase();
+  const after = String(req.query.after || "").trim();      // ISO datetime (train arrival)
+  const maxMin = req.query.max ? Number(req.query.max) : null; // optional filter window
+  const limit = req.query.limit ? Math.max(1, Math.min(60, Number(req.query.limit))) : 18;
+
+
   const tpcs = STATION_TO_TPC[station];
 
   if (!tpcs) return res.status(404).json({ error: "Station niet in OV mapping" });
@@ -752,7 +791,24 @@ app.get("/ov/by-station", async (req, res) => {
     station,
     tpcs,
     perStop,
-    departures: merged.slice(0, 18),
+    departures: (() => {
+      let out = merged;
+      const afterT = after ? Date.parse(after) : NaN;
+      if (Number.isFinite(afterT)) {
+        out = out.filter(x => {
+          const t = Date.parse(x.expectedTime || x.plannedTime || "");
+          return Number.isFinite(t) && t >= afterT;
+        });
+        if (Number.isFinite(maxMin)) {
+          const maxT = afterT + (maxMin * 60_000);
+          out = out.filter(x => {
+            const t = Date.parse(x.expectedTime || x.plannedTime || "");
+            return Number.isFinite(t) && t <= maxT;
+          });
+        }
+      }
+      return out.slice(0, limit);
+    })(),
   };
 
   ovCacheSet(key, payload);
