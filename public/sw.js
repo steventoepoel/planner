@@ -1,7 +1,7 @@
 // sw.js — Toepoel's Planner (v1.09)
 // HTML: network-first; API: no-cache; Static: stale-while-revalidate
 
-const VERSION = "1.09";
+const VERSION = "1.09.1";
 const CACHE_STATIC  = `toepoel-static-${VERSION}`;
 const CACHE_RUNTIME = `toepoel-runtime-${VERSION}`;
 
