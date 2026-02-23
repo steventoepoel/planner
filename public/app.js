@@ -560,16 +560,26 @@
 
     let shown = 0;
 
-    deps.slice(0, 40).forEach(d => {
+    const within = [];
+    const after = [];
+
+    deps.slice(0, 80).forEach(d => {
       const depIso = d.expectedTime || d.plannedTime;
       const depT = safeParseTime(depIso || "");
       if (!Number.isFinite(depT) || !Number.isFinite(trainArrT)) return;
 
       const transferMin = Math.round((depT - trainArrT) / 60000);
-
-      // filter: 0..30 min na aankomst
       if (transferMin < 0) return;
-      if (transferMin > 30) return;
+
+      const item = { d, depIso, transferMin };
+
+      // primair: 0..30 min na aankomst
+      if (transferMin <= 30) within.push(item);
+      else if (transferMin <= 120) after.push(item); // fallback: toon eerstvolgende opties tot 2 uur
+    });
+
+    function addRow(item){
+      const { d, depIso, transferMin } = item;
 
       shown++;
 
@@ -599,7 +609,20 @@
       row.appendChild(badge);
 
       panelEl.appendChild(row);
-    });
+    }
+
+    within.slice(0, 25).forEach(addRow);
+
+    // fallback: als er wel vertrektijden zijn maar niets binnen 30 min, toon volgende 8 (tot 120 min)
+    if (within.length === 0 && after.length > 0){
+      const note = document.createElement("div");
+      note.className = "small";
+      note.style.marginTop = "6px";
+      note.textContent = "Er zijn wel OV-vertrektijden, maar geen binnen 30 minuten na aankomst van de trein (filter 0–30 min). Hieronder de eerstvolgende opties:";
+      panelEl.appendChild(note);
+
+      after.slice(0, 8).forEach(addRow);
+    }
 
     if (shown === 0){
       const msg = document.createElement("div");
