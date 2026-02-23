@@ -1,4 +1,4 @@
-// server.js — v1.15
+// server.js — v1.14 (stations debug + subscription-key fallback)
 // p-limit + rate limiting + caching + prefix fallback + slimme Extreme-B + OV (bus/tram/metro)
 // + searchForArrival support + /reis returns { options } + sw.js no-cache for PWA updates
 
@@ -8,7 +8,6 @@ dns.setDefaultResultOrder("ipv4first"); // ✅ Render/IPv6 issues
 import express from "express";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
-import fs from "fs";
 import { promises as fsp } from "fs";
 import pLimit from "p-limit";
 import rateLimit from "express-rate-limit";
@@ -99,7 +98,7 @@ app.use("/ov", ovLimiter);
    NS API
    ========================= */
 const API_KEY = process.env.NS_API_KEY;
-const headers = API_KEY ? { "Ocp-Apim-Subscription-Key": API_KEY, "Accept":"application/json", "User-Agent":"toepoels-planner/1.15" } : null;
+const headers = API_KEY ? { "Ocp-Apim-Subscription-Key": API_KEY, "Accept":"application/json", "User-Agent":"toepoels-planner/1.14" } : null;
 
 const EXTREME = {
   minTransferTime: 0,
@@ -125,25 +124,6 @@ app.get("/health", (req, res) => {
     node: process.version,
   });
 });
-
-/* =========================
-   Snelle response caching (treinreizen)
-   - Houd TTL kort zodat resultaten actueel blijven
-   ========================= */
-const tripCache = new Map();
-const TRIP_TTL_MS = 20000;
-function tripCacheGet(key) {
-  const hit = tripCache.get(key);
-  if (!hit) return null;
-  if (Date.now() - hit.t > TRIP_TTL_MS) {
-    tripCache.delete(key);
-    return null;
-  }
-  return hit.payload;
-}
-function tripCacheSet(key, payload) {
-  tripCache.set(key, { t: Date.now(), payload });
-}
 
 
 /* =========================
@@ -485,13 +465,6 @@ app.get("/reis", async (req, res) => {
   const { van, naar, datetime, searchForArrival } = req.query;
   if (!van || !naar || !datetime) return res.status(400).json({ error: "Parameters ontbreken" });
 
-  const cacheKey = `reis:${String(van)}:${String(naar)}:${String(datetime)}:${String(searchForArrival ?? "")}`;
-  const cached = tripCacheGet(cacheKey);
-  if (cached) {
-    res.setHeader("Cache-Control", "public, max-age=5, stale-while-revalidate=20");
-    return res.json(cached);
-  }
-
   try {
     const extra = {
       ...(searchForArrival !== undefined ? { searchForArrival: String(searchForArrival) } : {}),
@@ -507,10 +480,7 @@ app.get("/reis", async (req, res) => {
     const trips = Array.isArray(data.trips) ? data.trips : [];
     const options = trips.map(tripToOption).filter(Boolean);
 
-    const payload = { options };
-    tripCacheSet(cacheKey, payload);
-    res.setHeader("Cache-Control", "public, max-age=5, stale-while-revalidate=20");
-    res.json(payload);
+    res.json({ options });
   } catch (err) {
     console.error("Reis fout:", err.message || err);
     res.status(500).json({ error: "Reis ophalen mislukt" });
@@ -550,13 +520,6 @@ app.get("/reis-extreme-b", async (req, res) => {
     return o.durationMin + penalty;
   }
 
-  const cacheKey = `reisx:${FROM}:${TO}:${DT}:${String(searchForArrival ?? "")}`;
-  const cached = tripCacheGet(cacheKey);
-  if (cached) {
-    res.setHeader("Cache-Control", "public, max-age=5, stale-while-revalidate=20");
-    return res.json(cached);
-  }
-
   try {
     const base = await fetchTrips({
       from: FROM,
@@ -570,10 +533,7 @@ app.get("/reis-extreme-b", async (req, res) => {
 
     if (options.length >= TARGET) {
       options.sort((a, b) => scoreOption(a) - scoreOption(b));
-      const payload = { options: options.slice(0, TARGET) };
-      tripCacheSet(cacheKey, payload);
-      res.setHeader("Cache-Control", "public, max-age=5, stale-while-revalidate=20");
-      return res.json(payload);
+      return res.json({ options: options.slice(0, TARGET) });
     }
 
     // via frequentie
@@ -678,10 +638,7 @@ app.get("/reis-extreme-b", async (req, res) => {
     }
 
     deduped.sort((a, b) => scoreOption(a) - scoreOption(b));
-    const payload = { options: deduped.slice(0, TARGET) };
-    tripCacheSet(cacheKey, payload);
-    res.setHeader("Cache-Control", "public, max-age=5, stale-while-revalidate=20");
-    res.json(payload);
+    res.json({ options: deduped.slice(0, TARGET) });
   } catch (err) {
     console.error("Extreme B fout:", err.message || err);
     res.status(500).json({ error: "Extreme B ophalen mislukt" });
@@ -693,77 +650,35 @@ app.get("/reis-extreme-b", async (req, res) => {
    - HTTPS is kapot (cert), dus fallback naar HTTP
    ========================= */
 
-// Stations-config (gedeeld met frontend): public/stations.json
-// De backend gebruikt alleen ov.mappings (code -> stopcodes)
-const STATIONS_JSON_PATH = "./public/stations.json";
-const DEFAULT_STATIONS_CONFIG = {
-  version: "1.15",
-  ov: {
-    mappings: {
-      // Dordrecht
-      ddr: { label: "OV stad", stops: ["53600140"] },
-      ddr_streek: { label: "OV streek", stops: ["53600151", "53600160"] },
-      ddzd: { label: "OV", stops: ["53608690"] },
-      zwnd: { label: "OV", stops: ["53500260"] },
+// stationcode -> tpc(s)
+const STATION_TO_TPC = {
+  // Dordrecht
+  ddr: ["53600140"],                     // Dordrecht Stad
+  ddr_streek: ["53600151", "53600160"],  // Dordrecht Streek
+  ddzd: ["53608690"],                    // Dordrecht Zuid
+  zwnd: ["53500260"],                    // Zwijndrecht
 
-      // Den Haag
-      gvh_tram: { label: "Tram", stops: ["2731", "2721", "2720", "2730"] },
-      gvh_bus: { label: "Bus", stops: ["3847"] },
-      gvc_tram: { label: "Tram", stops: ["2601", "2602", "2603", "2604"] },
+  // Den Haag
+  gvh: ["32003846"],                     // Den Haag HS (fallback / oude knop)
+  gvh_tram: ["2731", "2721", "2720", "2730"], // Den Haag HS — Tram (lokale codes → 3200 fallback)
+  gvh_bus: ["3847"],                          // Den Haag HS — Bus  (lokale code → 3200 fallback)
 
-      // Rotterdam
-      rtd_tram: { label: "Tram", stops: ["HA1016", "HA1134", "HA1039", "HA1118", "HA1421"] },
-      rtd_metro: { label: "Metro", stops: ["HA8700", "HA8000"] },
-      rtd_bus: { label: "Bus", stops: ["HA3941", "HA3942", "HA3944"] },
+  gvc: ["32002609"],                     // Den Haag Centraal (fallback / oude knop)
+  gvc_tram: ["2601", "2602", "2603", "2604"], // Den Haag Centraal — Tram (lokale codes → 3200 fallback)
 
-      rtb_tram: { label: "Tram", stops: ["HA1125", "HA1312"] },
-      rtb_metro: { label: "Metro", stops: ["HA8136", "HA8137"] },
-    },
-    stations: {
-      dordrecht: ["ddr", "ddr_streek"],
-      zwijndrecht: ["zwnd"],
-      "den haag hs": ["gvh_tram", "gvh_bus"],
-      "den haag centraal": ["gvc_tram"],
-      "rotterdam centraal": ["rtd_tram", "rtd_metro", "rtd_bus"],
-      "rotterdam blaak": ["rtb_tram", "rtb_metro"],
-    },
-  },
+  // Rotterdam
+  rtd: ["31003941"],                     // Rotterdam Centraal (fallback / oude knop)
+  rtd_tram: ["HA1016", "HA1134", "HA1039", "HA1118", "HA1421"], // Rotterdam Centraal — Tram (HA → stopareacode fallback)
+  rtd_metro: ["HA8700", "HA8000"],                               // Rotterdam Centraal — Metro
+  rtd_bus: ["HA3941", "HA3942", "HA3944"],                       // Rotterdam Centraal — Bus
+
+  rtb: ["31001125"],                     // Rotterdam Blaak (fallback / oude knop)
+  rtb_tram: ["HA1125", "HA1312"],        // Rotterdam Blaak — Tram
+  rtb_metro: ["HA8136", "HA8137"],       // Rotterdam Blaak — Metro
 };
-
-function loadStationsConfig() {
-  try {
-    const txt = fs.readFileSync(STATIONS_JSON_PATH, "utf-8");
-    const parsed = JSON.parse(txt);
-    if (parsed?.ov?.mappings && typeof parsed.ov.mappings === "object") return parsed;
-  } catch {
-    // ignore
-  }
-  return DEFAULT_STATIONS_CONFIG;
-}
-
-const STATIONS_CONFIG = loadStationsConfig();
-const OV_MAPPINGS = STATIONS_CONFIG?.ov?.mappings || DEFAULT_STATIONS_CONFIG.ov.mappings;
 
 const ovCache = new Map();
 const OV_TTL_MS = 20000;
-
-// Per-halte caching (scheelt veel OVAPI calls)
-const ovCodeCache = new Map();
-const OV_CODE_TTL_OK_MS = 15000;
-const OV_CODE_TTL_ERR_MS = 5000;
-function ovCodeCacheGet(key) {
-  const hit = ovCodeCache.get(key);
-  if (!hit) return null;
-  const ttl = hit.ok ? OV_CODE_TTL_OK_MS : OV_CODE_TTL_ERR_MS;
-  if (Date.now() - hit.t > ttl) {
-    ovCodeCache.delete(key);
-    return null;
-  }
-  return hit.payload;
-}
-function ovCodeCacheSet(key, payload, ok) {
-  ovCodeCache.set(key, { t: Date.now(), payload, ok: Boolean(ok) });
-}
 
 function ovCacheGet(key) {
   const hit = ovCache.get(key);
@@ -793,7 +708,7 @@ async function fetchOvJsonSafe(path) {
         {
           headers: {
             Accept: "application/json",
-            "User-Agent": "toepoels-planner/1.15",
+            "User-Agent": "toepoels-planner/1.14",
           },
         },
         8000
@@ -811,36 +726,20 @@ async function fetchOvJsonSafe(path) {
 async function fetchOvForCode(code) {
   const c = String(code).trim();
 
-  const cacheKey = `code:${c}`;
-  const cached = ovCodeCacheGet(cacheKey);
-  if (cached) return cached;
-
   // 1) Direct als tpc
   let r = await fetchOvJsonSafe(`tpc/${encodeURIComponent(c)}`);
-  if (r.ok) {
-    const payload = { ...r, kind: "tpc", requested: c, resolved: c };
-    ovCodeCacheSet(cacheKey, payload, true);
-    return payload;
-  }
+  if (r.ok) return { ...r, kind: "tpc", requested: c, resolved: c };
 
   // 2) Lokale numerieke haltecoden (bv. HTM 2604, 2731) werken bij OVAPI vaak als userstopcode
   if (/^\d{3,5}$/.test(c)) {
     const rUser = await fetchOvJsonSafe(`userstopcode/${encodeURIComponent(c)}`);
-    if (rUser.ok) {
-      const payload = { ...rUser, kind: "userstopcode", requested: c, resolved: c };
-      ovCodeCacheSet(cacheKey, payload, true);
-      return payload;
-    }
+    if (rUser.ok) return { ...rUser, kind: "userstopcode", requested: c, resolved: c };
 
     // fallback: sommige datasets gebruiken een 3200-prefix als tpc
     const padded = c.padStart(4, "0");
     const pref = `3200${padded}`;
     const r2 = await fetchOvJsonSafe(`tpc/${encodeURIComponent(pref)}`);
-    if (r2.ok) {
-      const payload = { ...r2, kind: "tpc", requested: c, resolved: pref };
-      ovCodeCacheSet(cacheKey, payload, true);
-      return payload;
-    }
+    if (r2.ok) return { ...r2, kind: "tpc", requested: c, resolved: pref };
   }
 
   // 3) RET/Rotterdam codes zoals HA1016 zijn meestal lokale codes; OVAPI tpc is vaak 3100xxxx
@@ -849,28 +748,18 @@ async function fetchOvForCode(code) {
   if (haMatch) {
     const pref = `3100${haMatch[1]}`;
     const r3 = await fetchOvJsonSafe(`tpc/${encodeURIComponent(pref)}`);
-    if (r3.ok) {
-      const payload = { ...r3, kind: "tpc", requested: c, resolved: pref };
-      ovCodeCacheSet(cacheKey, payload, true);
-      return payload;
-    }
+    if (r3.ok) return { ...r3, kind: "tpc", requested: c, resolved: pref };
   }
 
   // 4) Codes met letters kunnen ook StopAreaCode zijn
   if (/[A-Za-z]/.test(c)) {
     const r4 = await fetchOvJsonSafe(`stopareacode/${encodeURIComponent(c)}`);
-    if (r4.ok) {
-      const payload = { ...r4, kind: "stopareacode", requested: c, resolved: c };
-      ovCodeCacheSet(cacheKey, payload, true);
-      return payload;
-    }
+    if (r4.ok) return { ...r4, kind: "stopareacode", requested: c, resolved: c };
   }
 
 
   // geef laatste fout terug (meestal van eerste attempt)
-  const payload = { ok: false, error: r?.error || "OVAPI request failed", kind: "unknown", requested: c, resolved: null, usedUrl: r?.usedUrl || null, raw: null };
-  ovCodeCacheSet(cacheKey, payload, false);
-  return payload;
+  return { ok: false, error: r?.error || "OVAPI request failed", kind: "unknown", requested: c, resolved: null, usedUrl: r?.usedUrl || null, raw: null };
 }
 
 // Haal alle "stops" (objecten met Passes) uit een ovapi response (tpc of stopareacode)
@@ -948,8 +837,8 @@ app.get("/ov/by-station", async (req, res) => {
   const stationRaw = String(req.query.station || "").trim();
   const stationKey = stationRaw.toLowerCase();
 
-  // 1) mapping (case-insensitive) via stations.json
-  let tpcs = OV_MAPPINGS?.[stationRaw]?.stops || OV_MAPPINGS?.[stationKey]?.stops;
+  // 1) mapping (case-insensitive)
+  let tpcs = STATION_TO_TPC[stationRaw] || STATION_TO_TPC[stationKey];
 
   // 2) direct tpc list support: station=53600140,53600151
   if (!tpcs && stationRaw.includes(",")) {
@@ -966,7 +855,7 @@ app.get("/ov/by-station", async (req, res) => {
     return res.status(404).json({
       error: "Station niet in OV mapping",
       hint: "Gebruik een bekende stationcode (bv. rtd_tram) of geef direct tpc(s) mee als station=53600140,53600151",
-      knownStations: Object.keys(OV_MAPPINGS || {}).sort(),
+      knownStations: Object.keys(STATION_TO_TPC).sort(),
     });
   }
 
