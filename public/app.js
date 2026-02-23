@@ -1,8 +1,8 @@
-/* Toepoel's Reisplanner — app.js (v1.13.1)
+/* Toepoel's Reisplanner — app.js (v1.15)
    Fixes:
    - Geen JS parse errors (datum/tijd invullen + stations autocomplete werkt weer)
    - Logo linksboven = harde refresh (incl. SW + caches opruimen)
-   - OV: multi-knoppen per station (stad/streek, tram/bus/metro) + eindbestemming klein
+   - OV: stations.json config + caching + betere foutmeldingen + eindbestemming klein
    - Safari/iOS timezone parse fix voor OV + alle tijden
 */
 
@@ -501,8 +501,13 @@
 
   /* =========================
      OV helpers — multi buttons per station
+     - Laad stations.json (gedeeld met backend)
      ========================= */
-  const OV_BUTTONS_BY_STATION = new Map([
+
+  const OV_BUTTONS_BY_STATION = new Map();
+
+  // Fallback (als stations.json niet laadt)
+  const OV_BUTTONS_FALLBACK = new Map([
     ["dordrecht", [
       { label: "OV stad",   code: "ddr" },
       { label: "OV streek", code: "ddr_streek" },
@@ -528,9 +533,34 @@
     ]],
   ]);
 
+  async function loadStationsConfig(){
+    try{
+      const cfg = await fetchJson(`/stations.json?v=${encodeURIComponent(APP_VERSION)}&t=${Date.now()}`);
+      const stations = cfg?.ov?.stations;
+      const mappings = cfg?.ov?.mappings;
+      if (!stations || !mappings) throw new Error("stations.json mist ov.stations of ov.mappings");
+
+      OV_BUTTONS_BY_STATION.clear();
+      Object.entries(stations).forEach(([stationKey, codes])=>{
+        const key = normName(stationKey);
+        const btns = (Array.isArray(codes) ? codes : []).map(code=>{
+          const m = mappings?.[code];
+          return { label: (m?.label || code), code };
+        });
+        OV_BUTTONS_BY_STATION.set(key, btns);
+      });
+    } catch(e){
+      // stil falen: we hebben fallback
+      // console.warn("stations.json laden mislukt", e);
+    }
+  }
+
+  // Laad config op de achtergrond (mag de treinsearch niet blokkeren)
+  loadStationsConfig();
+
   function getOvButtonsForStation(stationName){
     const key = normName(stationName || "");
-    return OV_BUTTONS_BY_STATION.get(key) || [];
+    return OV_BUTTONS_BY_STATION.get(key) || OV_BUTTONS_FALLBACK.get(key) || [];
   }
 
   function classifyOvTransfer(min){
@@ -557,8 +587,21 @@
 
     const trainArrT = safeParseTime(trainArrIso || "");
     const deps = Array.isArray(ovData?.departures) ? ovData.departures : [];
+    const perStop = Array.isArray(ovData?.perStop) ? ovData.perStop : [];
 
     let shown = 0;
+
+    // Gezonde foutmelding als OVAPI niets teruggeeft (of haltes fout zijn)
+    if (!deps.length){
+      const anyErr = perStop.some(s => s && s.error);
+      const anyOk  = perStop.some(s => s && !s.error);
+      const msg = document.createElement("div");
+      msg.className = "small";
+      msg.style.marginTop = "6px";
+      if (anyErr && !anyOk) msg.textContent = "Geen live-vertrektijden beschikbaar (OVAPI/haltecode probleem).";
+      else msg.textContent = "Geen OV-vertrektijden gevonden.";
+      panelEl.appendChild(msg);
+    }
 
     const within = [];
     const after = [];
@@ -586,6 +629,9 @@
       const row = document.createElement("div");
       row.className = "ovItem";
 
+      const main = document.createElement("div");
+      main.className = "ovMain";
+
       const left = document.createElement("div");
       left.className = "ovLeft";
       left.textContent = `${ovIcon(d.transportType)} ${d.line || ""}`.trim();
@@ -603,8 +649,10 @@
       badge.className = `ovTransfer ${classifyOvTransfer(transferMin)}`;
       badge.textContent = `${transferMin}m`;
 
-      row.appendChild(left);
-      row.appendChild(mid);
+      main.appendChild(left);
+      main.appendChild(mid);
+
+      row.appendChild(main);
       row.appendChild(right);
       row.appendChild(badge);
 

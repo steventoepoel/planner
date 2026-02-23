@@ -415,6 +415,7 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
   margin-top:8px;
   align-items:center;
 }
+.ovMain{ min-width:0; display:flex; gap:10px; align-items:center; flex:1; }
 .ovLeft{ font-weight:900; white-space:nowrap; }
 .ovMid{ color:var(--muted); font-weight:800; min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .ovRight{ font-weight:900; white-space:nowrap; }
@@ -432,6 +433,25 @@ button:disabled{ opacity:0.75; cursor:not-allowed; }
 .ovTransfer.good{ color:var(--good); }
 .ovTransfer.ok{ color:var(--ok); }
 .ovTransfer.bad{ color:var(--bad); }
+
+/* Compacte OV weergave op mobiel: 2 kolommen (lijn+routing links, tijd rechts) */
+@media (max-width: 520px){
+  .ovItem{
+    display:grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "main time"
+      "main badge";
+    align-items:center;
+    column-gap:10px;
+    row-gap:6px;
+  }
+  .ovMain{ grid-area: main; display:block; }
+  .ovLeft{ display:block; }
+  .ovMid{ display:block; font-size:12px; margin-top:2px; }
+  .ovRight{ grid-area: time; justify-self:end; }
+  .ovTransfer{ grid-area: badge; justify-self:end; margin-left:0; }
+}
 
 /* Update banner */
 .updateBanner{

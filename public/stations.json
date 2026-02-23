@@ -1,0 +1,31 @@
+{
+  "version": "1.15",
+  "ov": {
+    "mappings": {
+      "ddr": { "label": "OV stad", "stops": ["53600140"] },
+      "ddr_streek": { "label": "OV streek", "stops": ["53600151", "53600160"] },
+      "ddzd": { "label": "OV", "stops": ["53608690"] },
+      "zwnd": { "label": "OV", "stops": ["53500260"] },
+
+      "gvh_tram": { "label": "Tram", "stops": ["2731", "2721", "2720", "2730"] },
+      "gvh_bus": { "label": "Bus", "stops": ["3847"] },
+      "gvc_tram": { "label": "Tram", "stops": ["2601", "2602", "2603", "2604"] },
+
+      "rtd_tram": { "label": "Tram", "stops": ["HA1016", "HA1134", "HA1039", "HA1118", "HA1421"] },
+      "rtd_metro": { "label": "Metro", "stops": ["HA8700", "HA8000"] },
+      "rtd_bus": { "label": "Bus", "stops": ["HA3941", "HA3942", "HA3944"] },
+
+      "rtb_tram": { "label": "Tram", "stops": ["HA1125", "HA1312"] },
+      "rtb_metro": { "label": "Metro", "stops": ["HA8136", "HA8137"] }
+    },
+
+    "stations": {
+      "dordrecht": ["ddr", "ddr_streek"],
+      "zwijndrecht": ["zwnd"],
+      "den haag hs": ["gvh_tram", "gvh_bus"],
+      "den haag centraal": ["gvc_tram"],
+      "rotterdam centraal": ["rtd_tram", "rtd_metro", "rtd_bus"],
+      "rotterdam blaak": ["rtb_tram", "rtb_metro"]
+    }
+  }
+}
