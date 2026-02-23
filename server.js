@@ -1,4 +1,4 @@
-// server.js — v1.13 (stations debug + subscription-key fallback)
+// server.js — v1.14 (stations debug + subscription-key fallback)
 // p-limit + rate limiting + caching + prefix fallback + slimme Extreme-B + OV (bus/tram/metro)
 // + searchForArrival support + /reis returns { options } + sw.js no-cache for PWA updates
 
@@ -98,7 +98,7 @@ app.use("/ov", ovLimiter);
    NS API
    ========================= */
 const API_KEY = process.env.NS_API_KEY;
-const headers = API_KEY ? { "Ocp-Apim-Subscription-Key": API_KEY, "Accept":"application/json", "User-Agent":"toepoels-planner/1.13" } : null;
+const headers = API_KEY ? { "Ocp-Apim-Subscription-Key": API_KEY, "Accept":"application/json", "User-Agent":"toepoels-planner/1.14" } : null;
 
 const EXTREME = {
   minTransferTime: 0,
@@ -652,13 +652,29 @@ app.get("/reis-extreme-b", async (req, res) => {
 
 // stationcode -> tpc(s)
 const STATION_TO_TPC = {
-  ddr: ["53600140"],     // Dordrecht (busperron A, volgens ovzoeker)
-  ddzd: ["53608690"],    // Dordrecht Zuid
-  zwnd: ["53500260"],    // Zwijndrecht
-  rtb: ["31001125"],     // Rotterdam Blaak
-  rtd: ["31003941"],     // Rotterdam Centraal
-  gvh: ["32003846"],     // Den Haag HS
-  gvc: ["32002609"],     // Den Haag Centraal
+  // Dordrecht
+  ddr: ["53600140"],                     // Dordrecht Stad
+  ddr_streek: ["53600151", "53600160"],  // Dordrecht Streek
+  ddzd: ["53608690"],                    // Dordrecht Zuid
+  zwnd: ["53500260"],                    // Zwijndrecht
+
+  // Den Haag
+  gvh: ["32003846"],                     // Den Haag HS (fallback / oude knop)
+  gvh_tram: ["2731", "2721", "2720", "2730"], // Den Haag HS — Tram (lokale codes → 3200 fallback)
+  gvh_bus: ["3847"],                          // Den Haag HS — Bus  (lokale code → 3200 fallback)
+
+  gvc: ["32002609"],                     // Den Haag Centraal (fallback / oude knop)
+  gvc_tram: ["2601", "2602", "2603", "2604"], // Den Haag Centraal — Tram (lokale codes → 3200 fallback)
+
+  // Rotterdam
+  rtd: ["31003941"],                     // Rotterdam Centraal (fallback / oude knop)
+  rtd_tram: ["HA1016", "HA1134", "HA1039", "HA1118", "HA1421"], // Rotterdam Centraal — Tram (HA → stopareacode fallback)
+  rtd_metro: ["HA8700", "HA8000"],                               // Rotterdam Centraal — Metro
+  rtd_bus: ["HA3941", "HA3942", "HA3944"],                       // Rotterdam Centraal — Bus
+
+  rtb: ["31001125"],                     // Rotterdam Blaak (fallback / oude knop)
+  rtb_tram: ["HA1125", "HA1312"],        // Rotterdam Blaak — Tram
+  rtb_metro: ["HA8136", "HA8137"],       // Rotterdam Blaak — Metro
 };
 
 const ovCache = new Map();
@@ -677,10 +693,10 @@ function ovCacheSet(key, payload) {
   ovCache.set(key, { t: Date.now(), payload });
 }
 
-async function fetchOvTpcSafe(tpc) {
+async function fetchOvJsonSafe(path) {
   const urls = [
-    `https://v0.ovapi.nl/tpc/${encodeURIComponent(tpc)}`, // (momenteel cert kapot)
-    `http://v0.ovapi.nl/tpc/${encodeURIComponent(tpc)}`,  // ✅ fallback
+    `https://v0.ovapi.nl/${path}`, // (cert kan stuk, daarom ook http)
+    `http://v0.ovapi.nl/${path}`,
   ];
 
   let lastErr = "onbekend";
@@ -692,12 +708,12 @@ async function fetchOvTpcSafe(tpc) {
         {
           headers: {
             Accept: "application/json",
-            "User-Agent": "toepoels-planner/1.08",
+            "User-Agent": "toepoels-planner/1.14",
           },
         },
         8000
       );
-      return { ok: true, raw, usedUrl: url };
+      return { ok: true, raw, usedUrl: url, status: 200 };
     } catch (e) {
       lastErr = `${url} -> ${String(e?.message || e)}`;
     }
@@ -706,31 +722,110 @@ async function fetchOvTpcSafe(tpc) {
   return { ok: false, error: lastErr };
 }
 
-function normalizeOvapi(tpc, dataRaw) {
-  if (!dataRaw) return [];
+// Probeert een code als tpc; bij 404/geen data: slimme fallbacks
+async function fetchOvForCode(code) {
+  const c = String(code).trim();
 
-  const root = dataRaw?.[String(tpc)];
-  if (!root) return [];
+  // 1) Direct als tpc
+  let r = await fetchOvJsonSafe(`tpc/${encodeURIComponent(c)}`);
+  if (r.ok) return { ...r, kind: "tpc", requested: c, resolved: c };
 
-  const stopName = root?.Stop?.Name || null;
-  const passes = root?.Passes ? Object.values(root.Passes) : [];
+  // 2) Lokale numerieke haltecoden (bv. HTM 2604, 2731) werken bij OVAPI vaak als userstopcode
+  if (/^\d{3,5}$/.test(c)) {
+    const rUser = await fetchOvJsonSafe(`userstopcode/${encodeURIComponent(c)}`);
+    if (rUser.ok) return { ...rUser, kind: "userstopcode", requested: c, resolved: c };
+
+    // fallback: sommige datasets gebruiken een 3200-prefix als tpc
+    const padded = c.padStart(4, "0");
+    const pref = `3200${padded}`;
+    const r2 = await fetchOvJsonSafe(`tpc/${encodeURIComponent(pref)}`);
+    if (r2.ok) return { ...r2, kind: "tpc", requested: c, resolved: pref };
+  }
+
+  // 3) RET/Rotterdam codes zoals HA1016 zijn meestal lokale codes; OVAPI tpc is vaak 3100xxxx
+  //    (bewijs: HA1125 ↔ 31001125, HA3941 ↔ 31003941)
+  const haMatch = c.match(/^HA(\d{4})$/i);
+  if (haMatch) {
+    const pref = `3100${haMatch[1]}`;
+    const r3 = await fetchOvJsonSafe(`tpc/${encodeURIComponent(pref)}`);
+    if (r3.ok) return { ...r3, kind: "tpc", requested: c, resolved: pref };
+  }
+
+  // 4) Codes met letters kunnen ook StopAreaCode zijn
+  if (/[A-Za-z]/.test(c)) {
+    const r4 = await fetchOvJsonSafe(`stopareacode/${encodeURIComponent(c)}`);
+    if (r4.ok) return { ...r4, kind: "stopareacode", requested: c, resolved: c };
+  }
+
+
+  // geef laatste fout terug (meestal van eerste attempt)
+  return { ok: false, error: r?.error || "OVAPI request failed", kind: "unknown", requested: c, resolved: null, usedUrl: r?.usedUrl || null, raw: null };
+}
+
+// Haal alle "stops" (objecten met Passes) uit een ovapi response (tpc of stopareacode)
+function extractStopsFromOvapi(raw, primaryKey) {
+  const out = [];
+
+  if (!raw || typeof raw !== "object") return out;
+
+  // tpc response: raw[tpc] = { Stop, Passes }
+  const direct = raw?.[String(primaryKey)];
+  if (direct && typeof direct === "object") {
+    if (direct.Passes) out.push({ key: String(primaryKey), node: direct });
+
+    // stopareacode response: raw[stopareacode] = { <tpc>: {Stop,Passes}, ... }
+    for (const [k, v] of Object.entries(direct)) {
+      if (v && typeof v === "object" && v.Passes) out.push({ key: String(k), node: v });
+    }
+  }
+
+  // fallback: scan top-level
+  for (const [k, v] of Object.entries(raw)) {
+    if (v && typeof v === "object" && v.Passes) out.push({ key: String(k), node: v });
+  }
+
+  // dedupe op key
+  const seen = new Set();
+  return out.filter((x) => (seen.has(x.key) ? false : (seen.add(x.key), true)));
+}
+
+function pickDestination(p) {
+  return (
+    p?.DestinationName ??
+    p?.DestinationName50 ??
+    p?.DestinationName70 ??
+    p?.DestinationName80 ??
+    p?.Destination ??
+    ""
+  );
+}
+
+function normalizeOvapi(primaryKey, dataRaw) {
+  const stops = extractStopsFromOvapi(dataRaw, primaryKey);
+  if (!stops.length) return [];
 
   const items = [];
-  for (const p of passes) {
-    const planned = p?.TargetDepartureTime ?? p?.PlannedDepartureTime ?? null;
-    const expected = p?.ExpectedDepartureTime ?? planned ?? null;
-    if (!expected) continue;
 
-    items.push({
-      tpc: String(tpc),
-      stopName,
-      line: p?.LinePublicNumber ?? p?.LineName ?? "",
-      destination: p?.DestinationName ?? "",
-      plannedTime: planned,
-      expectedTime: expected,
-      transportType: p?.TransportType ?? null,
-      operator: p?.OperatorName ?? null,
-    });
+  for (const s of stops) {
+    const stopName = s?.node?.Stop?.Name || null;
+    const passes = s?.node?.Passes ? Object.values(s.node.Passes) : [];
+
+    for (const p of passes) {
+      const planned = p?.TargetDepartureTime ?? p?.PlannedDepartureTime ?? null;
+      const expected = p?.ExpectedDepartureTime ?? planned ?? null;
+      if (!expected) continue;
+
+      items.push({
+        tpc: String(s.key),
+        stopName,
+        line: p?.LinePublicNumber ?? p?.LineName ?? "",
+        destination: pickDestination(p),
+        plannedTime: planned,
+        expectedTime: expected,
+        transportType: p?.TransportType ?? null,
+        operator: p?.OperatorName ?? null,
+      });
+    }
   }
 
   items.sort((a, b) => Date.parse(a.expectedTime) - Date.parse(b.expectedTime));
@@ -739,29 +834,70 @@ function normalizeOvapi(tpc, dataRaw) {
 
 // GET /ov/by-station?station=ddr
 app.get("/ov/by-station", async (req, res) => {
-  const station = String(req.query.station || "").trim().toLowerCase();
-  const tpcs = STATION_TO_TPC[station];
+  const stationRaw = String(req.query.station || "").trim();
+  const stationKey = stationRaw.toLowerCase();
 
-  if (!tpcs) return res.status(404).json({ error: "Station niet in OV mapping" });
+  // 1) mapping (case-insensitive)
+  let tpcs = STATION_TO_TPC[stationRaw] || STATION_TO_TPC[stationKey];
 
-  const key = `ov:${station}`;
+  // 2) direct tpc list support: station=53600140,53600151
+  if (!tpcs && stationRaw.includes(",")) {
+    tpcs = stationRaw.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+
+  // 3) direct single tpc support
+  if (!tpcs && stationRaw) {
+    // alleen als het eruit ziet als een code (cijfers of letters+cijfers)
+    if (/^[A-Za-z]*\d+[A-Za-z\d]*$/.test(stationRaw)) tpcs = [stationRaw];
+  }
+
+  if (!tpcs) {
+    return res.status(404).json({
+      error: "Station niet in OV mapping",
+      hint: "Gebruik een bekende stationcode (bv. rtd_tram) of geef direct tpc(s) mee als station=53600140,53600151",
+      knownStations: Object.keys(STATION_TO_TPC).sort(),
+    });
+  }
+
+  const key = `ov:${stationKey}:${tpcs.join(",")}`;
   const cached = ovCacheGet(key);
   if (cached) return res.json(cached);
 
   const perStop = await Promise.all(
-    tpcs.map(async (tpc) => {
-      const r = await fetchOvTpcSafe(tpc);
+    tpcs.map(async (code) => {
+      const r = await fetchOvForCode(code);
       if (!r.ok) {
-        return { tpc: String(tpc), stopName: null, passCount: 0, departures: [], usedUrl: null, error: r.error };
+        return {
+          requested: String(code),
+          resolved: r.resolved,
+          kind: r.kind,
+          stopName: null,
+          passCount: 0,
+          departures: [],
+          usedUrl: r.usedUrl,
+          error: r.error,
+        };
       }
 
       const raw = r.raw;
-      const root = raw?.[String(tpc)];
-      const stopName = root?.Stop?.Name || null;
-      const passCount = root?.Passes ? Object.keys(root.Passes).length : 0;
+      const deps = normalizeOvapi(r.resolved || code, raw);
 
-      const deps = normalizeOvapi(tpc, raw);
-      return { tpc: String(tpc), stopName, passCount, departures: deps, usedUrl: r.usedUrl, error: null };
+      // stopName + passCount: pak eerste stop die we kunnen vinden
+      const stops = extractStopsFromOvapi(raw, r.resolved || code);
+      const first = stops[0]?.node || null;
+      const stopName = first?.Stop?.Name || null;
+      const passCount = first?.Passes ? Object.keys(first.Passes).length : 0;
+
+      return {
+        requested: String(code),
+        resolved: r.resolved,
+        kind: r.kind,
+        stopName,
+        passCount,
+        departures: deps,
+        usedUrl: r.usedUrl,
+        error: null,
+      };
     })
   );
 
@@ -771,10 +907,10 @@ app.get("/ov/by-station", async (req, res) => {
     .sort((a, b) => Date.parse(a.expectedTime) - Date.parse(b.expectedTime));
 
   const payload = {
-    station,
+    station: stationKey,
     tpcs,
     perStop,
-    departures: merged.slice(0, 18),
+    departures: merged.slice(0, 25),
   };
 
   ovCacheSet(key, payload);
