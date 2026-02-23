@@ -1,4 +1,4 @@
-// server.js (Render production) — v1.08
+// server.js — v1.13 (stations debug + subscription-key fallback)
 // p-limit + rate limiting + caching + prefix fallback + slimme Extreme-B + OV (bus/tram/metro)
 // + searchForArrival support + /reis returns { options } + sw.js no-cache for PWA updates
 
@@ -22,13 +22,6 @@ app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
-
-// ✅ voorkom “eeuwig laden” in de browser als een upstream call hangt
-app.use((req, res, next) => {
-  // 15s is ruim genoeg voor NS/OV calls + netwerk
-  res.setTimeout(15000);
-  next();
-});
 
 /* =========================
    Security headers (lightweight)
@@ -105,7 +98,7 @@ app.use("/ov", ovLimiter);
    NS API
    ========================= */
 const API_KEY = process.env.NS_API_KEY;
-const headers = API_KEY ? { "Ocp-Apim-Subscription-Key": API_KEY } : null;
+const headers = API_KEY ? { "Ocp-Apim-Subscription-Key": API_KEY, "Accept":"application/json", "User-Agent":"toepoels-planner/1.13" } : null;
 
 const EXTREME = {
   minTransferTime: 0,
@@ -130,6 +123,24 @@ app.get("/health", (req, res) => {
     hasApiKey: Boolean(API_KEY),
     node: process.version,
   });
+});
+
+
+/* =========================
+   Debug: test NS stations call
+   ========================= */
+app.get("/debug/ns-stations", async (req, res) => {
+  res.setTimeout(15000);
+  if (!requireApiKey(res)) return;
+  const q = String(req.query.q || "rot").trim();
+  try {
+    const url = `https://gateway.apiportal.ns.nl/reisinformatie-api/api/v2/stations?q=${encodeURIComponent(q)}${API_KEY ? `&subscription-key=${encodeURIComponent(API_KEY)}` : ""}`;
+    const r = await fetchWithTimeout(url, { headers }, 9000);
+    const text = await r.text();
+    res.status(200).type("application/json").send(JSON.stringify({ status: r.status, ok: r.ok, url, body: text.slice(0, 1200) }));
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
 });
 
 /* =========================
@@ -278,7 +289,7 @@ setInterval(() => {
 }, 10 * 60 * 1000).unref();
 
 async function fetchStationsFromNS(q) {
-  const url = `https://gateway.apiportal.ns.nl/reisinformatie-api/api/v2/stations?q=${encodeURIComponent(q)}`;
+  const url = `https://gateway.apiportal.ns.nl/reisinformatie-api/api/v2/stations?q=${encodeURIComponent(q)}${API_KEY ? `&subscription-key=${encodeURIComponent(API_KEY)}` : ""}`;
   const data = await limitStations(() => fetchJsonStrict(url, { headers }, 8000));
   return data.payload || [];
 }
@@ -304,18 +315,11 @@ async function fetchStationsCached(q) {
 
   stationInFlight.set(key, p);
   return p;
-
-// ✅ Hard timeout wrapper (extra veiligheid)
-async function withHardTimeout(promise, ms, label="timeout"){
-  let t;
-  const timeout = new Promise((_, rej)=>{ t=setTimeout(()=>rej(new Error(label)), ms); });
-  try { return await Promise.race([promise, timeout]); }
-  finally { clearTimeout(t); }
-}
-
 }
 
 app.get("/stations", async (req, res) => {
+  // voorkom “blijft laden”
+  res.setTimeout(15000);
   if (!requireApiKey(res)) return;
 
   const q = String(req.query.q || "").trim();
@@ -339,11 +343,11 @@ app.get("/stations", async (req, res) => {
       }
     }
 
-    const payload = exact || (await withHardTimeout(fetchStationsCached(q), 9000, "Stations timeout"));
+    const payload = exact || (await fetchStationsCached(q));
     res.json(payload);
   } catch (err) {
-    console.error("Stations fout:", err.message || err);
-    res.status(502).json({ error: "Stations ophalen mislukt" });
+    console.error("Stations fout:", err?.message || err);
+    res.status(502).json({ error: "Stations ophalen mislukt", detail: String(err?.message || err) });
   }
 });
 
@@ -352,6 +356,7 @@ app.get("/stations", async (req, res) => {
    ========================= */
 async function fetchTrips({ from, to, dateTimeISO, extraParams = {} }) {
   const base = new URL("https://gateway.apiportal.ns.nl/reisinformatie-api/api/v3/trips");
+  if (API_KEY) base.searchParams.set("subscription-key", API_KEY);
   base.searchParams.set("fromStation", from);
   base.searchParams.set("toStation", to);
   base.searchParams.set("dateTime", dateTimeISO);
@@ -687,7 +692,7 @@ async function fetchOvTpcSafe(tpc) {
         {
           headers: {
             Accept: "application/json",
-            "User-Agent": "toepoels-planner/1.13",
+            "User-Agent": "toepoels-planner/1.08",
           },
         },
         8000
