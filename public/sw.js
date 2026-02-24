@@ -1,7 +1,7 @@
-// sw.js — Toepoel's Planner (v1.09)
+// sw.js — Toepoel's Planner (v1.16)
 // HTML: network-first; API: no-cache; Static: stale-while-revalidate
 
-const VERSION = "1.12.2";
+const VERSION = "1.16";
 const CACHE_STATIC  = `toepoel-static-${VERSION}`;
 const CACHE_RUNTIME = `toepoel-runtime-${VERSION}`;
 
@@ -15,8 +15,9 @@ const PRECACHE = [
   "/logo-192.png",
   "/logo-512.png",
   "/toepoels_planner_optimized.webp",
-  "/styles.css",
-  "/app.js"
+  "/app.1.16.js",
+  "/styles.1.16.css",
+  "/stations.1.16.json",
 ];
 
 self.addEventListener("install", (event) => {

@@ -427,7 +427,14 @@
     }
     const signal = (which === "van") ? stationAbortVan.signal : stationAbortNaar.signal;
 
-    const data = await fetchJson(`/stations?q=${encodeURIComponent(query)}`, { signal });
+    let data = null;
+    try{
+      data = await fetchJson(`/stations?q=${encodeURIComponent(query)}`, { signal });
+    }catch(e){
+      // Typen/nieuwe query abort de vorige fetch: dat is oké
+      if (e?.name === "AbortError" || String(e).includes("AbortError")) return;
+      throw e;
+    }
     stationCache.set(key, data || []);
 
     listEl.innerHTML = "";
@@ -444,8 +451,8 @@
     }
   }
 
-  vanInput.addEventListener("input", debounce(()=>loadStations(vanInput.value, stationsVan, vanList, "van"), 200));
-  naarInput.addEventListener("input", debounce(()=>loadStations(naarInput.value, stationsNaar, naarList, "naar"), 200));
+  vanInput.addEventListener("input", debounce(()=>{ loadStations(vanInput.value, stationsVan, vanList, "van").catch(()=>{}); }, 200));
+  naarInput.addEventListener("input", debounce(()=>{ loadStations(naarInput.value, stationsNaar, naarList, "naar").catch(()=>{}); }, 200));
 
   async function resolveCode(name, store, which){
     const wanted = normName(name);
@@ -535,7 +542,14 @@
 
   async function loadStationsConfig(){
     try{
-      const cfg = await fetchJson(`/stations.json?v=${encodeURIComponent(APP_VERSION)}&t=${Date.now()}`);
+      const stationsFile = `/stations.${APP_VERSION}.json`;
+      let cfg;
+      try{
+        cfg = await fetchJson(`${stationsFile}?t=${Date.now()}`);
+      }catch(e){
+        // fallback voor oudere deployments
+        cfg = await fetchJson(`/stations.json?v=${encodeURIComponent(APP_VERSION)}&t=${Date.now()}`);
+      }
       const stations = cfg?.ov?.stations;
       const mappings = cfg?.ov?.mappings;
       if (!stations || !mappings) throw new Error("stations.json mist ov.stations of ov.mappings");
@@ -857,6 +871,7 @@
   const EXTREME_ENDPOINT = "/reis-extreme-b";
   const NORMAL_ENDPOINT  = "/reis";
   let inFlightSearch = null;
+  let searchTimeoutHandle = null;
 
   function getMode(){
     return localStorage.getItem(LS.mode) === "normal" ? "normal" : "extreme";
@@ -864,6 +879,16 @@
 
   async function zoekReis(){
     if (!zoekBtn) return;
+
+    // If a search is already running, the button acts as Cancel.
+    if (inFlightSearch) {
+      try { inFlightSearch.abort(); } catch {}
+      inFlightSearch = null;
+      if (searchTimeoutHandle) { clearTimeout(searchTimeoutHandle); searchTimeoutHandle = null; }
+      zoekBtn.textContent = "Zoek reis";
+      // Do not clear current results; user might still want to view them.
+      return;
+    }
 
     humanErrorEl.textContent = "";
     resultaat.innerHTML = "";
@@ -873,9 +898,14 @@
       return;
     }
 
-    if (inFlightSearch) inFlightSearch.abort();
     inFlightSearch = new AbortController();
     const signal = inFlightSearch.signal;
+
+    // Client-side hard timeout so long-distance searches can never freeze the UI.
+    // 25s is long enough for normal results, but prevents "infinite" waiting.
+    searchTimeoutHandle = setTimeout(() => {
+      try { inFlightSearch?.abort(); } catch {}
+    }, 25000);
 
     try{
       const vanName = vanInput.value.trim();
@@ -887,8 +917,9 @@
       if (!vanName || !naarName) { humanErrorEl.textContent = "Vul van en naar in."; return; }
       if (!dt) { humanErrorEl.textContent = "Kies datum/tijd."; return; }
 
-      zoekBtn.disabled = true;
-      zoekBtn.textContent = "Zoeken…";
+      // Keep button clickable as Cancel.
+      zoekBtn.disabled = false;
+      zoekBtn.textContent = "Annuleren";
 
       const [vanCode, naarCode] = await Promise.all([
         resolveCode(vanName, vanList, "van"),
@@ -935,6 +966,8 @@
         resultaat.innerHTML = `<div class="resultCard">${msg}</div>`;
       }
     } finally{
+      if (searchTimeoutHandle) { clearTimeout(searchTimeoutHandle); searchTimeoutHandle = null; }
+      inFlightSearch = null;
       zoekBtn.disabled = false;
       zoekBtn.textContent = "Zoek reis";
     }
