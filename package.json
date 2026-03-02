@@ -1,6 +1,6 @@
 {
   "name": "planner",
-  "version": "1.21",
+  "version": "1.22a",
   "description": "Toepoel's Reisplanner",
   "type": "module",
   "main": "server.js",
