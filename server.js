@@ -1,9 +1,11 @@
-// server.js — v1.15
+// server.js — v1.19
 // p-limit + rate limiting + caching + prefix fallback + slimme Extreme-B + OV (bus/tram/metro)
 // + searchForArrival support + /reis returns { options } + sw.js no-cache for PWA updates
 
 import dns from "dns";
 dns.setDefaultResultOrder("ipv4first"); // ✅ Render/IPv6 issues
+
+import http from "http";
 
 import express from "express";
 import fetch from "node-fetch";
@@ -16,6 +18,76 @@ import rateLimit from "express-rate-limit";
 dotenv.config();
 
 const app = express();
+
+/* =========================
+   Stability / self-healing — v1.19
+   - Hard process-level safety nets: crash fast so the host can restart
+   - Event-loop lag + memory watchdog (prevents “server hangt”)
+   - Global request timeouts
+   ========================= */
+
+// If the process gets into a bad state, it is usually better to exit and let the host restart.
+function crashSoon(reason, err) {
+  try {
+    console.error("[FATAL]", reason, err?.stack || err);
+  } catch {}
+  // give logs a moment to flush
+  setTimeout(() => process.exit(1), 250).unref();
+}
+
+// Catch programmer / runtime errors that would otherwise leave the app half-broken.
+process.on("uncaughtException", (err) => crashSoon("uncaughtException", err));
+process.on("unhandledRejection", (err) => crashSoon("unhandledRejection", err));
+
+// --- Watchdog: event-loop lag + memory
+const WATCHDOG = {
+  intervalMs: Number(process.env.WATCHDOG_INTERVAL_MS || 5000),
+  maxLagMs: Number(process.env.WATCHDOG_MAX_LAG_MS || 2000),
+  maxHeapMB: Number(process.env.WATCHDOG_MAX_HEAP_MB || 450),
+  strikesToExit: Number(process.env.WATCHDOG_STRIKES || 3),
+};
+
+let watchdogStrikes = 0;
+let lastLagMs = 0;
+
+setInterval(() => {
+  const start = process.hrtime.bigint();
+  setImmediate(() => {
+    const end = process.hrtime.bigint();
+    // lag = time between scheduling and execution of setImmediate
+    const lagMs = Number(end - start) / 1e6;
+    lastLagMs = lagMs;
+
+    const heapMB = (process.memoryUsage().heapUsed || 0) / 1024 / 1024;
+
+    const lagBad = lagMs > WATCHDOG.maxLagMs;
+    const memBad = heapMB > WATCHDOG.maxHeapMB;
+
+    if (lagBad || memBad) {
+      watchdogStrikes += 1;
+      console.warn(
+        `[WATCHDOG] strike ${watchdogStrikes}/${WATCHDOG.strikesToExit} lag=${lagMs.toFixed(
+          0
+        )}ms heap=${heapMB.toFixed(0)}MB`
+      );
+      if (watchdogStrikes >= WATCHDOG.strikesToExit) {
+        crashSoon("watchdog exceeded (lag/memory)", new Error(`lag=${lagMs} heapMB=${heapMB}`));
+      }
+    } else {
+      watchdogStrikes = 0;
+    }
+  });
+}, WATCHDOG.intervalMs).unref();
+
+// --- Global request timeouts (avoid endless hanging sockets)
+app.use((req, res, next) => {
+  // response timeout
+  res.setTimeout(Number(process.env.REQ_TIMEOUT_MS || 30000));
+  // kill slow uploads / bodies (if any)
+  req.setTimeout?.(Number(process.env.REQ_TIMEOUT_MS || 30000));
+  next();
+});
+
 
 /** ✅ Render / proxies: MOET vóór rate-limit */
 app.set("trust proxy", 1);
@@ -44,7 +116,13 @@ app.use(
     etag: true,
     setHeaders: (res, path) => {
       // ✅ Service worker: altijd vers ophalen
-      if (path.endsWith("/sw.js") || path.endsWith("\\sw.js")) {
+      // (oude PWA's gebruikten ook /service-worker.js)
+      if (
+        path.endsWith("/sw.js") ||
+        path.endsWith("\\sw.js") ||
+        path.endsWith("/service-worker.js") ||
+        path.endsWith("\\service-worker.js")
+      ) {
         res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
         res.setHeader("Pragma", "no-cache");
         res.setHeader("Expires", "0");
@@ -99,7 +177,7 @@ app.use("/ov", ovLimiter);
    NS API
    ========================= */
 const API_KEY = process.env.NS_API_KEY;
-const headers = API_KEY ? { "Ocp-Apim-Subscription-Key": API_KEY, "Accept":"application/json", "User-Agent":"toepoels-planner/1.16" } : null;
+const headers = API_KEY ? { "Ocp-Apim-Subscription-Key": API_KEY, "Accept":"application/json", "User-Agent":"toepoels-planner/1.19" } : null;
 
 const EXTREME = {
   minTransferTime: 0,
@@ -119,19 +197,27 @@ function requireApiKey(res) {
    Health (handig voor debug)
    ========================= */
 app.get("/health", (req, res) => {
+  const mu = process.memoryUsage();
   res.json({
     ok: true,
     hasApiKey: Boolean(API_KEY),
     node: process.version,
+    uptimeSec: Math.round(process.uptime()),
+    heapUsedMB: Math.round((mu.heapUsed || 0) / 1024 / 1024),
+    rssMB: Math.round((mu.rss || 0) / 1024 / 1024),
+    lastEventLoopLagMs: Math.round(lastLagMs || 0),
   });
 });
 
 /* =========================
    Snelle response caching (treinreizen)
    - Houd TTL kort zodat resultaten actueel blijven
+   - v1.19: cleanup + max keys (voorkomt memory groei bij veel requests)
    ========================= */
-const tripCache = new Map();
-const TRIP_TTL_MS = 20000;
+const tripCache = new Map(); // key -> {t, payload}
+const TRIP_TTL_MS = Number(process.env.TRIP_TTL_MS || 20000);
+const TRIP_MAX_KEYS = Number(process.env.TRIP_MAX_KEYS || 2500);
+
 function tripCacheGet(key) {
   const hit = tripCache.get(key);
   if (!hit) return null;
@@ -141,9 +227,25 @@ function tripCacheGet(key) {
   }
   return hit.payload;
 }
+
 function tripCacheSet(key, payload) {
   tripCache.set(key, { t: Date.now(), payload });
+
+  // safety cap: verwijder oudste entries
+  if (tripCache.size > TRIP_MAX_KEYS) {
+    const entries = Array.from(tripCache.entries()).sort((a, b) => a[1].t - b[1].t);
+    const removeCount = tripCache.size - TRIP_MAX_KEYS;
+    for (let i = 0; i < removeCount; i++) tripCache.delete(entries[i][0]);
+  }
 }
+
+// periodieke cleanup (tegen memory groei)
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of tripCache.entries()) {
+    if (now - v.t > TRIP_TTL_MS) tripCache.delete(k);
+  }
+}, 60 * 1000).unref();
 
 
 /* =========================
@@ -480,6 +582,8 @@ function optionSignature(o) {
    - ondersteunt searchForArrival=true/false
    ========================= */
 app.get("/reis", async (req, res) => {
+  res.setTimeout(30000);
+  res.setTimeout(30000);
   if (!requireApiKey(res)) return;
 
   const { van, naar, datetime, searchForArrival } = req.query;
@@ -523,6 +627,8 @@ app.get("/reis", async (req, res) => {
    - B leg zoekt altijd vanaf arrive-time (depart-based), dus searchForArrival=false
    ========================= */
 app.get("/reis-extreme-b", async (req, res) => {
+  res.setTimeout(30000);
+  res.setTimeout(30000);
   if (!requireApiKey(res)) return;
 
   const { van, naar, datetime, searchForArrival } = req.query;
@@ -566,14 +672,33 @@ app.get("/reis-extreme-b", async (req, res) => {
   }
 
   try {
-    const base = await fetchTrips({
+    // 1) Base query met EXTREME params.
+    //    In de praktijk kan NS v3 soms (bij langere/complexere reizen) geen trips teruggeven
+    //    wanneer minTransferTime/additionalTransferTime op 0 staan.
+    //    Daarom: als EXTREME-base leeg is, doen we een fallback base-query ZONDER deze params
+    //    zodat de gebruiker in elk geval resultaten ziet en we alsnog via-kandidaten hebben.
+    let base = await fetchTrips({
       from: FROM,
       to: TO,
       dateTimeISO: DT,
       extraParams: baseExtra,
     });
 
-    const baseTrips = Array.isArray(base.trips) ? base.trips : [];
+    let baseTrips = Array.isArray(base.trips) ? base.trips : [];
+
+    if (baseTrips.length === 0) {
+      const fallbackExtra = {
+        ...(searchForArrival !== undefined ? { searchForArrival: String(searchForArrival) } : {}),
+      };
+      base = await fetchTrips({
+        from: FROM,
+        to: TO,
+        dateTimeISO: DT,
+        extraParams: fallbackExtra,
+      });
+      baseTrips = Array.isArray(base.trips) ? base.trips : [];
+    }
+
     const options = baseTrips.map(tripToOption).filter(Boolean);
 
     if (options.length >= TARGET) {
@@ -969,6 +1094,7 @@ function normalizeOvapi(primaryKey, dataRaw) {
 
 // GET /ov/by-station?station=ddr
 app.get("/ov/by-station", async (req, res) => {
+  res.setTimeout(30000);
   const stationRaw = String(req.query.station || "").trim();
   const stationKey = stationRaw.toLowerCase();
 
@@ -1056,8 +1182,24 @@ app.get("/ov/by-station", async (req, res) => {
 /* =========================
    Start
    ========================= */
-app.listen(PORT, () => {
-  console.log(`✅ Server draait op http://localhost:${PORT} (PORT=${PORT})`);
+const APP_VERSION = "1.19";
+
+const server = http.createServer(app);
+
+// Node/HTTP timeouts: prevent stuck sockets from piling up.
+server.requestTimeout = Number(process.env.SERVER_REQUEST_TIMEOUT_MS || 35000);
+server.headersTimeout = Number(process.env.SERVER_HEADERS_TIMEOUT_MS || 40000);
+server.keepAliveTimeout = Number(process.env.SERVER_KEEPALIVE_TIMEOUT_MS || 5000);
+
+server.listen(PORT, () => {
+  console.log(`✅ Server v${APP_VERSION} draait op http://localhost:${PORT} (PORT=${PORT})`);
 });
-const APP_VERSION = "1.16";
-;
+
+// Graceful shutdown (Render/containers)
+function shutdown(signal) {
+  console.log(`🛑 Shutdown (${signal})...`);
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 5000).unref();
+}
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

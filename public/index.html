@@ -8,111 +8,141 @@
   <meta name="description" content="Snelle treinplanner met normale én extra korte overstappen. Bekijk minimale overstaptijd, vergelijk reistijden en check live OV-aansluitingen." />
   <link rel="canonical" href="https://www.toepoels.nl/" />
 
-  <!-- ✅ Versie -->
-  <meta name="app-version" content="1.16" />
+  <meta name="app-version" content="1.20" />
 
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#275D63" />
+  <meta name="theme-color" content="#1d5560" />
   <link rel="icon" type="image/png" href="/logo-192.png" />
   <link rel="apple-touch-icon" href="/logo-192.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Toepoel's Planner" />
 
-  <!-- ✅ Share preview (naam + logo) -->
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="Toepoel's Reisplanner" />
+  <!-- Share preview -->
+  <meta property="og:type"        content="website" />
+  <meta property="og:title"       content="Toepoel's Reisplanner" />
   <meta property="og:description" content="Reisplanner met alle overstappen — normaal of extra korte overstappen." />
-  <meta property="og:image" content="https://www.toepoels.nl/toepoels_planner_optimized.webp" />
-  <meta property="og:image:type" content="image/webp" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Toepoel's Reisplanner" />
+  <meta property="og:image"       content="https://www.toepoels.nl/toepoels_planner_optimized.webp" />
+  <meta property="og:image:type"  content="image/webp" />
+  <meta property="og:url"         content="https://www.toepoels.nl/" />
+  <meta name="twitter:card"        content="summary_large_image" />
+  <meta name="twitter:title"       content="Toepoel's Reisplanner" />
   <meta name="twitter:description" content="Reisplanner met alle overstappen — normaal of extra korte overstappen." />
-  <meta name="twitter:image" content="https://www.toepoels.nl/toepoels_planner_optimized.webp" />
+  <meta name="twitter:image"       content="https://www.toepoels.nl/toepoels_planner_optimized.webp" />
+
+  <!-- Preconnect Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
   <!-- CSS -->
-  <link rel="stylesheet" href="/styles.1.16.css" />
+  <link rel="stylesheet" href="/styles.1.20.css" />
 </head>
 
 <body>
 
-<header>
+<header role="banner">
   <div class="safe">
     <div class="headerRow">
       <div class="brandBlock">
-        <!-- ✅ logo is knop (hard refresh) -->
-        <button id="logoRefreshBtn" class="logoBtn" type="button" title="Harde refresh">
-          <img src="/toepoels_planner_optimized.webp" alt="Toepoel's Reisplanner logo">
+        <button id="logoRefreshBtn" class="logoBtn" type="button" title="Harde refresh" aria-label="Harde refresh — ververs de app">
+          <img src="/toepoels_planner_optimized.webp"
+               alt="Toepoel's Reisplanner"
+               width="80" height="80"
+               fetchpriority="high" />
         </button>
 
-        <!-- ✅ modus knoppen -->
         <div class="modeWrap">
-          <div class="modeLabel" id="modeLabel">Modus</div>
-          <div class="segment" role="group" aria-label="Kies modus">
-            <button id="modeNormal" class="segmentBtn" type="button">Normale overstappen</button>
-            <button id="modeExtreme" class="segmentBtn active" type="button">Extra korte overstappen</button>
+          <div class="modeLabel" id="modeLabel" aria-hidden="true">Modus</div>
+          <div class="segment" role="group" aria-label="Kies reismodus">
+            <button id="modeNormal"  class="segmentBtn" type="button" aria-pressed="false">Normale overstappen</button>
+            <button id="modeExtreme" class="segmentBtn active" type="button" aria-pressed="true">Extra korte overstappen</button>
           </div>
         </div>
       </div>
 
-      <div class="headerControls" title="Standaard: Extra korte overstappen">
+      <div class="headerControls" aria-live="polite" title="Huidige reismodus">
         ⚡ Extra korte overstappen
       </div>
     </div>
   </div>
 </header>
 
-<div class="container safe">
-  <div class="card">
+<main class="container safe" id="mainContent">
+
+  <section class="card" aria-label="Reisplanner zoekopdracht">
 
     <label for="van">Van</label>
     <div class="stationRow">
-      <input id="van" list="stationsVan" placeholder="Typ station (min. 2 letters)" autocomplete="off" />
-      <button id="wisselBtnIcon" class="swapIconBtn" type="button" title="Wissel">⇄</button>
+      <input id="van"
+             list="stationsVan"
+             placeholder="Typ station (min. 2 letters)"
+             autocomplete="off"
+             autocorrect="off"
+             autocapitalize="none"
+             spellcheck="false"
+             aria-label="Vertrekstation"
+             aria-describedby="vanHint" />
+      <button id="wisselBtnIcon" class="swapIconBtn" type="button" title="Wissel stations" aria-label="Wissel vertrek- en aankomststation">⇄</button>
     </div>
     <datalist id="stationsVan"></datalist>
-    <div class="small" id="vanHint" style="margin-top:6px;"></div>
+    <div class="small" id="vanHint" role="status" aria-live="polite" style="margin-top:5px;min-height:18px;"></div>
 
     <label for="naar">Naar</label>
-    <input id="naar" list="stationsNaar" placeholder="Typ station (min. 2 letters)" autocomplete="off" />
+    <input id="naar"
+           list="stationsNaar"
+           placeholder="Typ station (min. 2 letters)"
+           autocomplete="off"
+           autocorrect="off"
+           autocapitalize="none"
+           spellcheck="false"
+           aria-label="Aankomststation"
+           aria-describedby="naarHint" />
     <datalist id="stationsNaar"></datalist>
-    <div class="small" id="naarHint" style="margin-top:6px;"></div>
+    <div class="small" id="naarHint" role="status" aria-live="polite" style="margin-top:5px;min-height:18px;"></div>
 
     <label>Datum &amp; tijd</label>
     <div class="datetimeRow">
       <div class="col">
-        <input type="date" id="dateInput" />
+        <input type="date" id="dateInput" aria-label="Datum" />
       </div>
       <div class="col timeCols">
-        <select id="hourSelect" aria-label="Uur"></select>
+        <select id="hourSelect"   aria-label="Uur"></select>
         <select id="minuteSelect" aria-label="Minuut"></select>
       </div>
     </div>
 
-    <label>Zoek op</label>
-    <select id="searchType">
+    <label for="searchType">Zoek op</label>
+    <select id="searchType" aria-describedby="searchTypeHint">
       <option value="depart" selected>Vertrektijd</option>
       <option value="arrive">Aankomsttijd</option>
     </select>
-    <div class="small">Bij aankomsttijd zoek je reizen die vóór deze tijd aankomen.</div>
+    <div class="small" id="searchTypeHint">Bij aankomsttijd zoek je reizen die vóór deze tijd aankomen.</div>
 
     <div class="row">
       <button id="zoekBtn" type="button">Zoek reis</button>
     </div>
 
     <div class="row">
-      <button id="favBtn" type="button" class="favBtn"><span class="star">⭐</span><span>Bewaar favoriet</span></button>
+      <button id="favBtn" type="button" class="favBtn">
+        <span class="star" aria-hidden="true">⭐</span>
+        <span>Bewaar favoriet</span>
+      </button>
     </div>
 
-    <div class="small" id="humanError" style="margin-top:10px;"></div>
-  </div>
+    <div class="small" id="humanError" role="alert" aria-live="assertive" style="margin-top:10px;"></div>
+  </section>
 
-  <div class="card favlist">
+  <section class="card favlist" aria-label="Favoriete reizen">
     <b>Favoriete reizen</b>
-    <div class="small" style="margin-top:6px;">Tip: sleep met ⠿ om te sorteren.</div>
-    <div id="favorieten"></div>
-  </div>
+    <div class="small" style="margin-top:5px;">Tip: sleep met ⠿ om te sorteren.</div>
+    <div id="favorieten" role="list"></div>
+  </section>
 
-  <div id="resultaat"></div>
-</div>
+  <div id="resultaat" aria-live="polite" aria-label="Reisopties"></div>
+
+</main>
 
 <div class="updateBanner safe" id="updateBanner" role="status" aria-live="polite">
   <div class="top">
@@ -124,13 +154,11 @@
   </div>
 </div>
 
-<div class="footer safe">
-  <div>Aan deze planner kunnen geen rechten aan worden ontleend.</div>
-  <div>Deze planner helpt je alleen om te kijken of je nog sneller kunt reizen.</div>
-  <div>Dit lukt niet altijd. 😉</div>
+<footer class="footer safe" role="contentinfo">
+  <div>Aan deze planner kunnen geen rechten worden ontleend.</div>
   <div>Versie: <span id="appVersion"></span></div>
-</div>
+</footer>
 
-<script src="/app.1.16.js" defer></script>
+<script src="/app.1.20.js" defer></script>
 </body>
 </html>

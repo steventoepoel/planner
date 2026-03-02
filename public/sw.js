@@ -1,7 +1,7 @@
-// sw.js — Toepoel's Planner (v1.16)
+// sw.js — Toepoel's Planner (v1.20)
 // HTML: network-first; API: no-cache; Static: stale-while-revalidate
 
-const VERSION = "1.16";
+const VERSION = "1.20";
 const CACHE_STATIC  = `toepoel-static-${VERSION}`;
 const CACHE_RUNTIME = `toepoel-runtime-${VERSION}`;
 
@@ -15,9 +15,9 @@ const PRECACHE = [
   "/logo-192.png",
   "/logo-512.png",
   "/toepoels_planner_optimized.webp",
-  "/app.1.16.js",
-  "/styles.1.16.css",
-  "/stations.1.16.json",
+  "/app.1.20.js",
+  "/styles.1.20.css",
+  "/stations.1.20.json",
 ];
 
 self.addEventListener("install", (event) => {
@@ -87,6 +87,27 @@ async function handleStatic(req) {
   return fresh || cached;
 }
 
+
+async function handleAPI(req) {
+  // API calls should never crash the Service Worker if the network fails.
+  // For station typeahead, a failed fetch can happen when the request is aborted while typing.
+  try {
+    return await fetch(req, { cache: "no-store" });
+  } catch (err) {
+    const url = new URL(req.url);
+    if (url.pathname.startsWith("/stations")) {
+      return new Response("[]", {
+        status: 200,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      });
+    }
+    return new Response(JSON.stringify({ error: "network_error" }), {
+      status: 503,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
@@ -96,7 +117,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (isAPIRequest(req)) {
-    event.respondWith(fetch(req));
+    event.respondWith(handleAPI(req));
     return;
   }
   event.respondWith(handleStatic(req));

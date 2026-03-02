@@ -1,4 +1,4 @@
-/* Toepoel's Reisplanner — app.js (v1.15)
+/* Toepoel's Reisplanner — app.js (v1.20)
    Fixes:
    - Geen JS parse errors (datum/tijd invullen + stations autocomplete werkt weer)
    - Logo linksboven = harde refresh (incl. SW + caches opruimen)
@@ -372,6 +372,10 @@
     modeNormalBtn?.classList.toggle("active", m === "normal");
     modeExtremeBtn?.classList.toggle("active", m === "extreme");
 
+    // Accessibility: update aria-pressed
+    modeNormalBtn?.setAttribute("aria-pressed", String(m === "normal"));
+    modeExtremeBtn?.setAttribute("aria-pressed", String(m === "extreme"));
+
     const hc = document.querySelector(".headerControls");
     if (hc) hc.textContent = (m === "extreme") ? "⚡ Extra korte overstappen" : "✅ Normale overstappen";
   }
@@ -436,14 +440,13 @@
     }
     const signal = (which === "van") ? stationAbortVan.signal : stationAbortNaar.signal;
 
-    let data;
-    try {
+    let data = null;
+    try{
       data = await fetchJson(`/stations?q=${encodeURIComponent(query)}`, { signal });
-    } catch (e) {
-      // Ignore aborts (user typed again / input changed)
+    }catch(e){
+      // Typen/nieuwe query abort de vorige fetch: dat is oké
       const m = String(e?.message || e || "");
-      const abort = e?.name === "AbortError" || m.toLowerCase().includes("signal is aborted") || m.includes("AbortError");
-      if (abort) return;
+      if (e?.name === "AbortError" || m.includes("AbortError") || m.toLowerCase().includes("signal is aborted")) return;
       throw e;
     }
     stationCache.set(key, data || []);
@@ -462,8 +465,8 @@
     }
   }
 
-  vanInput.addEventListener("input", debounce(()=>loadStations(vanInput.value, stationsVan, vanList, "van"), 200));
-  naarInput.addEventListener("input", debounce(()=>loadStations(naarInput.value, stationsNaar, naarList, "naar"), 200));
+  vanInput.addEventListener("input", debounce(()=>{ loadStations(vanInput.value, stationsVan, vanList, "van").catch(()=>{}); }, 200));
+  naarInput.addEventListener("input", debounce(()=>{ loadStations(naarInput.value, stationsNaar, naarList, "naar").catch(()=>{}); }, 200));
 
   async function resolveCode(name, store, which){
     const wanted = normName(name);
@@ -553,7 +556,14 @@
 
   async function loadStationsConfig(){
     try{
-      const cfg = await fetchJson(`/stations.json?v=${encodeURIComponent(APP_VERSION)}&t=${Date.now()}`);
+      const stationsFile = `/stations.${APP_VERSION}.json`;
+      let cfg;
+      try{
+        cfg = await fetchJson(`${stationsFile}?t=${Date.now()}`);
+      }catch(e){
+        // fallback voor oudere deployments
+        cfg = await fetchJson(`/stations.json?v=${encodeURIComponent(APP_VERSION)}&t=${Date.now()}`);
+      }
       const stations = cfg?.ov?.stations;
       const mappings = cfg?.ov?.mappings;
       if (!stations || !mappings) throw new Error("stations.json mist ov.stations of ov.mappings");
@@ -875,6 +885,7 @@
   const EXTREME_ENDPOINT = "/reis-extreme-b";
   const NORMAL_ENDPOINT  = "/reis";
   let inFlightSearch = null;
+  let searchTimeoutHandle = null;
 
   function getMode(){
     return localStorage.getItem(LS.mode) === "normal" ? "normal" : "extreme";
@@ -882,6 +893,15 @@
 
   async function zoekReis(){
     if (!zoekBtn) return;
+
+    // If a search is already running, the button acts as Cancel.
+    if (inFlightSearch) {
+      try { inFlightSearch.abort(); } catch {}
+      inFlightSearch = null;
+      if (searchTimeoutHandle) { clearTimeout(searchTimeoutHandle); searchTimeoutHandle = null; }
+      zoekBtn.textContent = "Zoek reis";
+      return;
+    }
 
     humanErrorEl.textContent = "";
     resultaat.innerHTML = "";
@@ -891,9 +911,12 @@
       return;
     }
 
-    if (inFlightSearch) inFlightSearch.abort();
     inFlightSearch = new AbortController();
     const signal = inFlightSearch.signal;
+
+    searchTimeoutHandle = setTimeout(() => {
+      try { inFlightSearch?.abort(); } catch {}
+    }, 25000);
 
     try{
       const vanName = vanInput.value.trim();
@@ -905,8 +928,17 @@
       if (!vanName || !naarName) { humanErrorEl.textContent = "Vul van en naar in."; return; }
       if (!dt) { humanErrorEl.textContent = "Kies datum/tijd."; return; }
 
-      zoekBtn.disabled = true;
-      zoekBtn.textContent = "Zoeken…";
+      zoekBtn.disabled = false;
+      zoekBtn.textContent = "Annuleren";
+
+      // Skeleton loading cards
+      resultaat.innerHTML = [1,2,3].map(() => `
+        <div class="resultCard" style="padding:16px;">
+          <span class="skeleton" style="height:14px;width:40%;margin-bottom:10px;"></span>
+          <span class="skeleton" style="height:28px;width:70%;margin-bottom:10px;"></span>
+          <span class="skeleton" style="height:22px;width:55%;"></span>
+        </div>
+      `).join("");
 
       const [vanCode, naarCode] = await Promise.all([
         resolveCode(vanName, vanList, "van"),
@@ -914,12 +946,12 @@
       ]);
 
       if (!vanCode || !naarCode) {
+        resultaat.innerHTML = "";
         humanErrorEl.textContent = "⚠️ Kies stations uit de lijst (klik op een suggestie).";
         return;
       }
 
       const endpoint = (getMode() === "normal") ? NORMAL_ENDPOINT : EXTREME_ENDPOINT;
-
       const url =
         `${endpoint}?van=${encodeURIComponent(vanCode)}&naar=${encodeURIComponent(naarCode)}&datetime=${encodeURIComponent(dt)}&searchForArrival=${encodeURIComponent(String(searchForArrival))}`;
 
@@ -931,8 +963,10 @@
       }
       if (!Array.isArray(opts)) opts = [];
 
+      resultaat.innerHTML = "";
+
       if (!opts.length) {
-        resultaat.innerHTML = `<div class="resultCard">Geen opties gevonden.</div>`;
+        resultaat.innerHTML = `<div class="resultCard" style="padding:16px;color:var(--muted);text-align:center;">Geen reisopties gevonden voor dit traject.</div>`;
         return;
       }
 
@@ -948,11 +982,13 @@
 
     } catch(e){
       const msg = humanizeError(e);
+      resultaat.innerHTML = "";
       if (msg) {
         humanErrorEl.textContent = msg;
-        resultaat.innerHTML = `<div class="resultCard">${msg}</div>`;
       }
     } finally{
+      if (searchTimeoutHandle) { clearTimeout(searchTimeoutHandle); searchTimeoutHandle = null; }
+      inFlightSearch = null;
       zoekBtn.disabled = false;
       zoekBtn.textContent = "Zoek reis";
     }
