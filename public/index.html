@@ -8,7 +8,7 @@
   <meta name="description" content="Snelle treinplanner met normale én extra korte overstappen. Bekijk minimale overstaptijd, vergelijk reistijden en check live OV-aansluitingen." />
   <link rel="canonical" href="https://www.toepoels.nl/" />
 
-  <meta name="app-version" content="1.20" />
+  <meta name="app-version" content="1.21" />
 
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json" />
@@ -58,6 +58,10 @@
           <div class="segment" role="group" aria-label="Kies reismodus">
             <button id="modeNormal"  class="segmentBtn" type="button" aria-pressed="false">Normale overstappen</button>
             <button id="modeExtreme" class="segmentBtn active" type="button" aria-pressed="true">Extra korte overstappen</button>
+          </div>
+
+          <div id="extremeNote" class="modeNote" aria-live="polite">
+            Bij extra korte overstappen duurt het langer voordat je advies krijgt en bij langere reizen werkt dit helaas (nog) niet.
           </div>
         </div>
       </div>
@@ -154,11 +158,38 @@
   </div>
 </div>
 
-<footer class="footer safe" role="contentinfo">
-  <div>Aan deze planner kunnen geen rechten worden ontleend.</div>
-  <div>Versie: <span id="appVersion"></span></div>
+
+<footer style="text-align:center; margin-top:40px; font-size:0.9em;">
+  <div>Aan deze planner kunnen geen rechten aan worden ontleend.</div>
+  <div>Deze planner helpt je alleen om te kijken of je nog sneller kunt reizen.</div>
+  <div>Dit lukt niet altijd. 😉</div>
+  <div style="margin-top:8px; opacity:0.7;">Versie 1.21</div>
 </footer>
 
+
 <script src="/app.1.20.js" defer></script>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const normalBtn = document.getElementById("modeNormal");
+  const extremeBtn = document.getElementById("modeExtreme");
+  const note = document.getElementById("extremeNote");
+  if (!normalBtn || !extremeBtn || !note) return;
+
+  const update = () => {
+    const extremeActive =
+      extremeBtn.classList.contains("active") ||
+      extremeBtn.getAttribute("aria-pressed") === "true";
+    note.style.display = extremeActive ? "block" : "none";
+  };
+
+  normalBtn.addEventListener("click", update);
+  extremeBtn.addEventListener("click", update);
+  update();
+});
+</script>
+
 </body>
+
 </html>
