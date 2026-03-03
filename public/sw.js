@@ -15,8 +15,8 @@ const PRECACHE = [
   "/logo-192.png",
   "/logo-512.png",
   "/toepoels_planner_optimized.webp",
-  "/app.1.20.js",
-  "/styles.1.20.css",
+  "/app.1.22.js",
+  "/styles.1.22.css",
   "/stations.1.20.json",
 ];
 

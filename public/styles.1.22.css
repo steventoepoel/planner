@@ -876,3 +876,6 @@ header, .header, .topbar, .appHeader {
     top: auto !important;
   }
 }
+
+/* v1.22b: force header non-sticky (iOS/SW cache safe) */
+header { position: static !important; top:auto !important; }
