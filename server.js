@@ -183,7 +183,8 @@ const EXTREME = {
   minTransferTime: 0,
   additionalTransferTime: 0,
   searchForAccessibleTrip: false,
-};
+
+  maxJourneys: 5,};
 
 function requireApiKey(res) {
   if (!API_KEY) {
